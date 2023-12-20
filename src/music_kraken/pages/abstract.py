@@ -23,7 +23,9 @@ from ..utils.enums.source import SourcePages
 from ..utils.enums.album import AlbumType
 from ..audio import write_metadata_to_target, correct_codec
 from ..utils.config import main_settings
-from ..utils.support_classes import Query, DownloadResult
+from ..utils.support_classes.query import Query
+from ..utils.support_classes.download_result import DownloadResult
+from ..utils.string_processing import fit_to_file_system
 
 
 INDEPENDENT_DB_OBJECTS = Union[Label, Album, Artist, Song]
@@ -53,17 +55,12 @@ class NamingDict(dict):
         return type(self)(super().copy(), self.object_mappings.copy())
     
     def __getitem__(self, key: str) -> str:
-        return super().__getitem__(key)
+        return fit_to_file_system(super().__getitem__(key))
     
     def default_value_for_name(self, name: str) -> str:
         return f'Various {name.replace("_", " ").title()}'
 
     def __missing__(self, key: str) -> str:
-        """
-        TODO 
-        add proper logging
-        """
-        
         if "." not in key:
             if key not in self.CUSTOM_KEYS:
                 return self.default_value_for_name(key)
@@ -144,6 +141,9 @@ def clean_object(dirty_object: DatabaseObject) -> DatabaseObject:
             Song: Collection(element_type=Song)
         }
 
+        if isinstance(dirty_object, Song):
+            return dirty_object
+
         _clean_music_object(dirty_object, collections)
     return dirty_object
     
@@ -153,11 +153,12 @@ def build_new_object(new_object: DatabaseObject) -> DatabaseObject:
     
     return new_object
 
-def merge_together(old_object: DatabaseObject, new_object: DatabaseObject) -> DatabaseObject:
+def merge_together(old_object: DatabaseObject, new_object: DatabaseObject, do_compile: bool = True) -> DatabaseObject:
     new_object = clean_object(new_object)
     
     old_object.merge(new_object)
-    old_object.compile(merge_into=False)
+    if do_compile and False:
+        old_object.compile(merge_into=False)
     
     return old_object
 
@@ -220,7 +221,7 @@ class Page:
         
         if type(music_object) in search_functions:
             r = search_functions[type(music_object)](music_object)
-            if len(r) > 0:
+            if r is not None and len(r) > 0:
                 return r
             
         r = []
@@ -246,7 +247,7 @@ class Page:
         return []
     
 
-    def fetch_details(self, music_object: DatabaseObject, stop_at_level: int = 1) -> DatabaseObject:
+    def fetch_details(self, music_object: DatabaseObject, stop_at_level: int = 1, post_process: bool = True) -> DatabaseObject:
         """
         when a music object with lacking data is passed in, it returns
         the SAME object **(no copy)** with more detailed data.
@@ -270,22 +271,21 @@ class Page:
         if isinstance(music_object, INDEPENDENT_DB_OBJECTS):
             source: Source
             for source in music_object.source_collection.get_sources_from_page(self.SOURCE_TYPE):
-                new_music_object.merge(
-                    self.fetch_object_from_source(
-                        source=source, 
-                        enforce_type=type(music_object), 
-                        stop_at_level=stop_at_level, 
-                        post_process=False
-                    )
-                )
+                new_music_object.merge(self.fetch_object_from_source(
+                    source=source, 
+                    enforce_type=type(music_object), 
+                    stop_at_level=stop_at_level, 
+                    post_process=False
+                ))
 
-        return merge_together(music_object, new_music_object)
+        return music_object.merge(new_music_object)
 
     def fetch_object_from_source(self, source: Source, stop_at_level: int = 2, enforce_type: Type[DatabaseObject] = None, post_process: bool = True) -> Optional[DatabaseObject]:
         obj_type = self.get_source_type(source)
-        
+
         if obj_type is None:
             return None
+
         if enforce_type != obj_type and enforce_type is not None:
             self.LOGGER.warning(f"Object type isn't type to enforce: {enforce_type}, {obj_type}")
             return None
@@ -298,16 +298,21 @@ class Page:
             Artist: self.fetch_artist,
             Label: self.fetch_label
         }
-        
+     
         if obj_type in fetch_map:
             music_object = fetch_map[obj_type](source, stop_at_level)
         else:
             self.LOGGER.warning(f"Can't fetch details of type: {obj_type}")
             return None
 
-        if post_process and music_object:
-            return build_new_object(music_object)
+        if stop_at_level > 1:
+            collection: Collection
+            for collection_str in music_object.DOWNWARDS_COLLECTION_STRING_ATTRIBUTES:
+                collection = music_object.__getattribute__(collection_str)
 
+                for sub_element in collection:
+                    sub_element.merge(self.fetch_details(sub_element, stop_at_level=stop_at_level-1, post_process=False))
+        
         return music_object
     
     def fetch_song(self, source: Source, stop_at_level: int = 1) -> Song:
@@ -328,7 +333,7 @@ class Page:
         def fill_naming_objects(naming_music_object: DatabaseObject):
             nonlocal naming_dict
             
-            for collection_name in naming_music_object.UPWARDS_COLLECTION_ATTRIBUTES:
+            for collection_name in naming_music_object.UPWARDS_COLLECTION_STRING_ATTRIBUTES:
                 collection: Collection = getattr(naming_music_object, collection_name)
                 
                 if collection.empty:
@@ -364,7 +369,7 @@ class Page:
 
         download_result: DownloadResult = DownloadResult()
 
-        for collection_name in music_object.DOWNWARDS_COLLECTION_ATTRIBUTES:
+        for collection_name in music_object.DOWNWARDS_COLLECTION_STRING_ATTRIBUTES:
             collection: Collection = getattr(music_object, collection_name)
 
             sub_ordered_music_object: DatabaseObject
