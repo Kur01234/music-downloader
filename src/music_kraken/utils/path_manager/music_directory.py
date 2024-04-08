@@ -22,7 +22,7 @@ def get_xdg_music_directory() -> Path:
     https://web.archive.org/web/20230322012953/https://freedesktop.org/wiki/Software/xdg-user-dirs/
     """
 
-    xdg_user_dirs_file = os.environ.get("XDG_CONFIG_HOME") or Path(Path.home(), ".config", "user-dirs.dirs")
+    xdg_user_dirs_file = Path(os.environ.get("XDG_CONFIG_HOME") or Path(Path.home(), ".config"), "user-dirs.dirs")
     xdg_user_dirs_default_file = Path("/etc/xdg/user-dirs.defaults")
 
     def get_music_dir_from_xdg_file(xdg_file_path: os.PathLike) -> Optional[Path]:
