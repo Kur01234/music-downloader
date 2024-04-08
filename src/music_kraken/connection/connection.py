@@ -134,6 +134,7 @@ class Connection:
             accepted_response_codes: set = None,
             refer_from_origin: bool = True,
             raw_url: bool = False,
+            raw_headers: bool = False,
             sleep_after_404: float = None,
             is_heartbeat: bool = False,
             disable_cache: bool = None,
@@ -154,14 +155,20 @@ class Connection:
 
 
         parsed_url = urlparse(url)
-        _headers = copy.copy(self.HEADER_VALUES)
-        _headers.update(headers)
+        
+        if not raw_headers:
+            _headers = copy.copy(self.HEADER_VALUES)
+            _headers.update(headers)
 
-        headers = self._update_headers(
-            headers=_headers,
-            refer_from_origin=refer_from_origin,
-            url=parsed_url
-        )
+            headers = self._update_headers(
+                headers=_headers,
+                refer_from_origin=refer_from_origin,
+                url=parsed_url
+            )
+        else:
+            headers = headers or {}
+
+        request_url = parsed_url.geturl() if not raw_url else url
 
         if name != "" and not disable_cache:
             cached = self.cache.get(name)
@@ -170,7 +177,7 @@ class Connection:
                 with responses.RequestsMock() as resp:
                     resp.add(
                         method=method,
-                        url=url,
+                        url=request_url,
                         body=cached,
                     )
                     return requests.request(method=method, url=url, timeout=timeout, headers=headers, **kwargs)
@@ -182,8 +189,6 @@ class Connection:
 
         if timeout is None:
             timeout = self.TIMEOUT
-
-        request_url = parsed_url.geturl() if not raw_url else url
 
         r = None
         connection_failed = False
@@ -270,9 +275,16 @@ class Connection:
             chunk_size: int = main_settings["chunk_size"],
             progress: int = 0,
             method: str = "GET",
+            try_count: int = 0,
+            accepted_response_codes: set = None,
             **kwargs
     ) -> DownloadResult:
+        accepted_response_codes = self.ACCEPTED_RESPONSE_CODES if accepted_response_codes is None else accepted_response_codes
         stream_kwargs = copy.copy(locals())
+        stream_kwargs.update(stream_kwargs.pop("kwargs"))
+
+        if "description" in kwargs:
+            name = kwargs.pop("description")
 
         if progress > 0:
             headers = dict() if headers is None else headers
@@ -283,6 +295,7 @@ class Connection:
             name=name,
             method=method,
             stream=True,
+            accepted_response_codes=accepted_response_codes,
             **kwargs
         )
 
@@ -308,13 +321,14 @@ class Connection:
                         progress += size
                         t.update(size)
 
-                except requests.exceptions.ConnectionError:
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, requests.exceptions.ChunkedEncodingError):
                     if try_count >= self.TRIES:
                         self.LOGGER.warning(f"Stream timed out at \"{url}\": to many retries, aborting.")
                         return DownloadResult(error_message=f"Stream timed out from {url}, reducing the chunk_size might help.")
 
                     self.LOGGER.warning(f"Stream timed out at \"{url}\": ({try_count}-{self.TRIES})")
                     retry = True
+                    try_count += 1
 
             if total_size > progress:
                 retry = True

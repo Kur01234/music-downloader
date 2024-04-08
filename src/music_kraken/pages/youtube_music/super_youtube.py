@@ -1,6 +1,7 @@
 from typing import List, Optional, Type, Tuple
 from urllib.parse import urlparse, urlunparse, parse_qs
 from enum import Enum
+import requests
 
 import sponsorblock
 from sponsorblock.errors import HTTPException, NotFoundException
@@ -135,6 +136,11 @@ class SuperYouTube(Page):
             logger=self.LOGGER,
             sleep_after_404=youtube_settings["sleep_after_youtube_403"]
         )
+
+        self.connection: Connection = Connection(
+            host=get_invidious_url(),
+            logger=self.LOGGER
+        )
         
         # the stuff with the connection is, to ensure sponsorblock uses the proxies, my programm does
         _sponsorblock_connection: Connection = Connection(host="https://sponsor.ajay.app/")
@@ -165,9 +171,10 @@ class SuperYouTube(Page):
         :param desc:
         :return:
         """
-        r = self.connection.get(YouTubeUrl(source.url).api)
+        r: requests.Response = self.connection.get(YouTubeUrl(source.url).api)
         if r is None:
             return DownloadResult(error_message="Api didn't even respond, maybe try another invidious Instance")
+
 
         audio_format = None
         best_bitrate = 0
@@ -193,7 +200,7 @@ class SuperYouTube(Page):
 
         endpoint = audio_format["url"]
 
-        return self.download_connection.stream_into(endpoint, target, description=desc, raw_url=True)
+        return self.download_connection.stream_into(endpoint, target, name=desc, raw_url=True)
 
     def get_skip_intervals(self, song: Song, source: Source) -> List[Tuple[float, float]]:
         if not youtube_settings["use_sponsor_block"]:

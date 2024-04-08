@@ -168,7 +168,7 @@ class YoutubeMusic(SuperYouTube):
     LOGGER = logging_settings["youtube_music_logger"]
 
     def __init__(self, *args, ydl_opts: dict = None, **kwargs):
-        self.connection: YoutubeMusicConnection = YoutubeMusicConnection(
+        self.yt_music_connection: YoutubeMusicConnection = YoutubeMusicConnection(
             logger=self.LOGGER,
             accept_language="en-US,en;q=0.5"
         )
@@ -191,8 +191,8 @@ class YoutubeMusic(SuperYouTube):
             logger=self.LOGGER,
             sleep_after_404=youtube_settings["sleep_after_youtube_403"],
             header_values={
-                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
                 "Referer": "https://music.youtube.com/",
+                'Origin': 'https://music.youtube.com',
             }
         )
 
@@ -208,13 +208,13 @@ class YoutubeMusic(SuperYouTube):
         search for: "innertubeApiKey"
         """
 
-        r = self.connection.get("https://music.youtube.com/")
+        r = self.yt_music_connection.get("https://music.youtube.com/")
         if r is None:
             return
 
         if urlparse(r.url).netloc == "consent.youtube.com":
             self.LOGGER.info(f"Making cookie consent request for {type(self).__name__}.")
-            r = self.connection.post("https://consent.youtube.com/save", data={
+            r = self.yt_music_connection.post("https://consent.youtube.com/save", data={
                 'gl': 'DE',
                 'm': '0',
                 'app': '0',
@@ -237,15 +237,15 @@ class YoutubeMusic(SuperYouTube):
 
             for cookie in r.cookies:
                 cookie_dict[cookie.name] = cookie.value
-            for cookie in self.connection.session.cookies:
+            for cookie in self.yt_music_connection.session.cookies:
                 cookie_dict[cookie.name] = cookie.value
 
             # save cookies in settings
             youtube_settings["youtube_music_consent_cookies"] = cookie_dict
         else:
-            self.connection.save(r, "index.html")
+            self.yt_music_connection.save(r, "index.html")
 
-        r = self.connection.get("https://music.youtube.com/", name="index.html")
+        r = self.yt_music_connection.get("https://music.youtube.com/", name="index.html")
         if r is None:
             return
 
@@ -349,7 +349,7 @@ class YoutubeMusic(SuperYouTube):
         query_continue = "" if self.credentials.ctoken == "" else f"&ctoken={self.credentials.ctoken}&continuation={self.credentials.ctoken}"
 
         # construct the request
-        r = self.connection.post(
+        r = self.yt_music_connection.post(
             url=get_youtube_url(path="/youtubei/v1/search",
                                 query=f"key={self.credentials.api_key}&prettyPrint=false" + query_continue),
             json={
@@ -402,7 +402,7 @@ class YoutubeMusic(SuperYouTube):
         url = urlparse(source.url)
         browse_id = url.path.replace("/channel/", "")
 
-        r = self.connection.post(
+        r = self.yt_music_connection.post(
             url=get_youtube_url(path="/youtubei/v1/browse", query=f"key={self.credentials.api_key}&prettyPrint=false"),
             json={
                 "browseId": browse_id,
@@ -445,7 +445,7 @@ class YoutubeMusic(SuperYouTube):
             return album
         browse_id = list_id_list[0]
 
-        r = self.connection.post(
+        r = self.yt_music_connection.post(
             url=get_youtube_url(path="/youtubei/v1/browse", query=f"key={self.credentials.api_key}&prettyPrint=false"),
             json={
                 "browseId": browse_id,
@@ -479,45 +479,64 @@ class YoutubeMusic(SuperYouTube):
 
         return album
 
-    def _get_best_format(self, format_list: List[Dict]) -> str:
-        def _calc_score(_f: dict):
-            s = 0
-
-            _url = _f.get("url", "")
-            if "mime=audio" in _url:
-                s += 100
-
-            return s
-
-        highest_score = 0
-        best_format = {}
-        for _format in format_list:
-            _s = _calc_score(_format)
-            if _s >= highest_score:
-                highest_score = _s
-                best_format = _format
-
-        return best_format.get("url")
 
     def fetch_song(self, source: Source, stop_at_level: int = 1) -> Song:
-        # implement the functionality yt_dl provides
-        ydl_res = self.yt_ie._real_extract(source.url)
+        song = Song()
 
-        source.audio_url = self._get_best_format(ydl_res.get("formats", [{}]))
-        song = Song(
-            title=ydl_res.get("title"),
-            source_list=[source],
-        )
         return song
 
+
+    def fetch_media_url(self, source: Source) -> dict:
+        def _get_best_format(format_list: List[Dict]) -> dict:
+            def _calc_score(_f: dict):
+                s = 0
+
+                _url = _f.get("url", "")
+                if "mime=audio" in _url:
+                    s += 100
+
+                return s
+
+            highest_score = 0
+            best_format = {}
+            for _format in format_list:
+                _s = _calc_score(_format)
+                if _s >= highest_score:
+                    highest_score = _s
+                    best_format = _format
+
+            return best_format
+
+        ydl_res = self.ydl.extract_info(url=source.url, download=False)
+        _best_format = _get_best_format(ydl_res.get("formats", [{}]))
+
+        print(_best_format)
+
+        return {
+            "url": _best_format.get("url"),
+            "chunk_size": _best_format.get("downloader_options", {}).get("http_chunk_size", main_settings["chunk_size"]),
+            "headers": _best_format.get("http_headers", {}),
+        }
+
     def download_song_to_target(self, source: Source, target: Target, desc: str = None) -> DownloadResult:
-        self.fetch_song(source)
+        media = self.fetch_media_url(source)
 
-        if source.audio_url is None:
-            self.LOGGER.warning(f"Couldn't fetch the audio source with the innertube api, falling back to invidious.")
-            return super().download_song_to_target(source, target)
+        result = self.download_connection.stream_into(
+            media["url"], 
+            target, 
+            name=desc, 
+            raw_url=True, 
+            raw_headers=True,
+            disable_cache=True,
+            headers=media.get("headers", {}),
+            # chunk_size=media.get("chunk_size", main_settings["chunk_size"]),
+            method="GET",
+        )
 
-        return self.download_connection.stream_into(source.audio_url, target, name=desc, raw_url=True, disable_cache=True)
+        if result.is_fatal_error:
+            result.merge(super().download_song_to_target(source=source, target=target, desc=desc))
+
+        return result
 
     def __del__(self):
         self.ydl.__exit__()
