@@ -16,6 +16,7 @@
     },
     "python.formatting.provider": "none",
     "cSpell.words": [
-        "Bandcamp"
+        "Bandcamp",
+        "levenshtein"
     ]
 }

@@ -3,7 +3,7 @@ import random
 from .path_manager import LOCATIONS
 from .config import main_settings
 
-DEBUG = True
+DEBUG = False
 DEBUG_LOGGING = DEBUG and True
 DEBUG_YOUTUBE_INITIALIZING = DEBUG and False
 DEBUG_PAGES = DEBUG and False
@@ -32,3 +32,8 @@ to download:
 > d: https://musify.club/release/some-random-release-183028492
 
 have fun :3""".strip()
+
+# regex pattern
+URL_PATTERN = r"https?://(?:[-\w.]|(?:%[\da-fA-F]{2}))+"
+INT_PATTERN = r"^\d*$"
+FLOAT_PATTERN = r"^[\d|\,|\.]*$"

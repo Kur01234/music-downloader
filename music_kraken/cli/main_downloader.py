@@ -7,7 +7,7 @@ from .utils import cli_function
 from .options.first_config import initial_config
 
 from ..utils.config import write_config, main_settings
-from ..utils.regex import URL_PATTERN
+from ..utils.shared import URL_PATTERN
 from ..utils.string_processing import fit_to_file_system
 from ..utils.support_classes.query import Query
 from ..utils.support_classes.download_result import DownloadResult
