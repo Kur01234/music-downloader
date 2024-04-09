@@ -9,7 +9,7 @@ from rich.console import Console
 from .utils.shared import DEBUG, DEBUG_LOGGING
 from .utils.config import logging_settings, main_settings, read_config
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 
 read_config()
 
