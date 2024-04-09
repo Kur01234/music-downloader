@@ -14,9 +14,11 @@ packages = ["music_kraken"]
 [project.scripts]
 music-kraken = "music_kraken.__main__:cli" 
 
+[tool.hatch.version]
+path = "music_kraken/__init__.py"
+
 [project]
 name = "music-kraken"
-version = "1.2.1"
 description = "An extensive music downloader crawling the internet. It gets its metadata from a couple of metadata providers, and it scrapes the audiofiles."
 authors = [{ name = "Hellow2", email = "hazel_is_cute@proton.me" }]
 license = "AGPL-3.0-or-later"
@@ -34,7 +36,6 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio",
     "Topic :: Utilities",
 ]
-
 dependencies = [
     "requests~=2.31.0",
     "responses~=0.24.1",
@@ -58,7 +59,6 @@ dependencies = [
     "sponsorblock~=0.1.3",
     "youtube_dl",
 ]
-
-
-[tool.setuptools.entry_points]
-music-kraken = "music_kraken:cli"
+dynamic = [
+    "version"
+]
