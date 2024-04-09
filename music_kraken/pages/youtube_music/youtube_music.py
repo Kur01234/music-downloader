@@ -15,7 +15,7 @@ from youtube_dl.extractor.youtube import YoutubeIE
 from ...utils.exception.config import SettingValueError
 from ...utils.config import main_settings, youtube_settings, logging_settings
 from ...utils.shared import DEBUG, DEBUG_YOUTUBE_INITIALIZING
-from ...utils.functions import get_current_millis
+from ...utils import get_current_millis
 
 if DEBUG:
     from ...utils.debug_utils import dump_to_file

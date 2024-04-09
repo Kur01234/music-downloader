@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from .config import config, read_config, write_config
 from .enums.colors import BColors
 
@@ -18,3 +20,8 @@ def output(msg: str, color: BColors = BColors.ENDC):
 
 def user_input(msg: str, color: BColors = BColors.ENDC):
     return input(_apply_color(msg, color)).strip()
+
+
+def get_current_millis() -> int:
+    dt = datetime.now()
+    return int(dt.microsecond / 1_000)
