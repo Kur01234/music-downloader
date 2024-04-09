@@ -17,8 +17,7 @@ from ...utils.config import main_settings, youtube_settings, logging_settings
 from ...utils.shared import DEBUG, DEBUG_YOUTUBE_INITIALIZING
 from ...utils import get_current_millis
 
-if DEBUG:
-    from ...utils.debug_utils import dump_to_file
+from ...utils import dump_to_file
 
 from ...objects import Source, DatabaseObject
 from ..abstract import Page

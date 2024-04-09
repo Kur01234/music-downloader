@@ -26,7 +26,7 @@ from ..utils.config import main_settings, logging_settings
 from ..utils.shared import DEBUG
 
 if DEBUG:
-    from ..utils.debug_utils import dump_to_file
+    from ..utils import dump_to_file
 
 
 def _parse_artist_url(url: str) -> str:

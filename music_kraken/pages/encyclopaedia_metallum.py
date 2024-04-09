@@ -23,8 +23,7 @@ from ..objects import (
     DatabaseObject
 )
 from ..utils.shared import DEBUG
-if DEBUG:
-    from ..utils.debug_utils import dump_to_file
+from ..utils import dump_to_file
 
 
 

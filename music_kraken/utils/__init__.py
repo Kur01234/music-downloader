@@ -1,12 +1,18 @@
 from datetime import datetime
+from pathlib import Path
+import json
+import logging
 
+from .shared import DEBUG, DEBUG_LOGGING, DEBUG_PAGES
 from .config import config, read_config, write_config
 from .enums.colors import BColors
+from .path_manager import LOCATIONS
+
+DEBUG = False
 
 """
-Here are all global important functions.
+IO functions
 """
-
 
 def _apply_color(msg: str, color: BColors) -> str:
     if color is BColors.ENDC:
@@ -21,6 +27,31 @@ def output(msg: str, color: BColors = BColors.ENDC):
 def user_input(msg: str, color: BColors = BColors.ENDC):
     return input(_apply_color(msg, color)).strip()
 
+
+def dump_to_file(file_name: str, payload: str, is_json: bool = False, exit_after_dump: bool = False):
+    if not DEBUG_PAGES:
+        return
+
+    path = Path(LOCATIONS.TEMP_DIRECTORY, file_name)
+    logging.warning(f"dumping {file_name} to: \"{path}\"")
+
+    if is_json:
+        payload = json.dumps(json.loads(payload), indent=4)
+
+    if isinstance(payload, dict):
+        payload = json.dumps(payload, indent=4)
+
+    with path.open("w") as f:
+        f.write(payload)
+
+    if exit_after_dump:
+        exit()
+
+
+
+"""
+misc functions
+"""
 
 def get_current_millis() -> int:
     dt = datetime.now()
