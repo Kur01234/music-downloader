@@ -11,7 +11,7 @@ from .utils.config import logging_settings, main_settings, read_config
 
 read_config()
 
-console: Console = Console(width=220)
+console: Console = Console()
 def init_logging():
     log_file = main_settings['log_file']
 

@@ -53,7 +53,7 @@ setup(
     packages=packages,
     package_dir={'': 'src', 'music_kraken': 'src/music_kraken'},
     install_requires=install_requires,
-    entry_points={'console_scripts': ['music-kraken = music_kraken:cli']},
+    entry_points={'_scripts': ['music-kraken = music_kraken:cli']},
     include_package_data=True,
     package_data={'music_kraken': ['*.sql']},
     data_files=[

@@ -314,7 +314,7 @@ class Connection:
             > The internationally recommended unit symbol for the kilobyte is kB.
             """
 
-            with tqdm(total=total_size - target.size, unit='B', unit_scale=True, unit_divisor=1024, desc=name) as t:
+            with tqdm(total=total_size, initial=target.size, unit='B', unit_scale=True, unit_divisor=1024, desc=name) as t:
                 try:
                     for chunk in r.iter_content(chunk_size=chunk_size):
                         size = f.write(chunk)

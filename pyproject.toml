@@ -1,12 +1,24 @@
 [build-system]
-requires = ["setuptools>=58.0.4", "wheel>=0.37.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling", "hatch-requirements-txt" ]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+directory = "dist"
+
+[tool.hatch.build.targets.sdist]
+include = ["music_kraken/*.py" ]
+
+[tool.hatch.build.targets.wheel]
+packages = ["music_kraken"]
+
+[project.scripts]
+music-kraken = "music_kraken.__main__:cli" 
 
 [project]
 name = "music-kraken"
 version = "1.2.1"
 description = "An extensive music downloader crawling the internet. It gets its metadata from a couple of metadata providers, and it scrapes the audiofiles."
-authors = [{ name = "Hellow2", email = "Hellow2@outlook.de" }]
+authors = [{ name = "Hellow2", email = "hazel_is_cute@proton.me" }]
 license = "AGPL-3.0-or-later"
 readme = "README.md"
 repository = "https://github.com/HeIIow2/music-downloader"
@@ -22,26 +34,31 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio",
     "Topic :: Utilities",
 ]
-[project.dependencies]
-requests = "~=2.28.1"
-mutagen = "~=1.46.0"
-musicbrainzngs = "~=0.7.1"
-jellyfish = "~=0.9.0"
-pydub = "~=0.25.1"
-youtube_dl = "*"
-beautifulsoup4 = "~=4.11.1"
-pycountry = "~=22.3.5"
+
+dependencies = [
+    "requests~=2.31.0",
+    "responses~=0.24.1",
+    "beautifulsoup4~=4.11.1",
+
+    "ffmpeg-python~=0.2.0",
+    "ffmpeg-progress-yield~=0.7.8",
+    "mutagen~=1.46.0",
+    "pandoc~=2.3",
+
+    "jellyfish~=0.9.0",
+    "transliterate~=1.10.2",
+    "pycountry~=24.0.1",
+    
+    "tqdm~=4.65.0",
+    "platformdirs~=4.2.0",
+    "pathvalidate~=2.5.2",
+    "toml~=0.10.2",
+    "typing_extensions~=4.7.1",
+
+    "sponsorblock~=0.1.3",
+    "youtube_dl",
+]
 
 
 [tool.setuptools.entry_points]
 music-kraken = "music_kraken:cli"
-
-[tool.setuptools]
-packages = ['music_kraken', 'music_kraken.lyrics', 'music_kraken.not_used_anymore', 'music_kraken.target', 'music_kraken.tagging', 'music_kraken.utils', 'music_kraken.not_used_anymore.sources', 'music_kraken.database', 'music_kraken.static_files']
-include_package_data = true
-package_dir = {''= 'src', 'music_kraken'= 'src/music_kraken'}
-package_data = {'music_kraken'= ['*.sql']}
-data_files = ["", ["requirements.txt", "README.md", "version"]]
-
-[tool.setuptools.command.test]
-# ...
