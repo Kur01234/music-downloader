@@ -146,16 +146,6 @@ class Song(Base):
             return main_artists
         return f"{main_artists} feat. {feature_artists}"
 
-    """
-    def __str__(self) -> str:
-        artist_credit_str = ""
-        artist_credits = self.get_artist_credits()
-        if artist_credits != "":
-            artist_credit_str = f" by {artist_credits}"
-
-        return f"\"{self.title}\"{artist_credit_str}"
-    """
-
     def __repr__(self) -> str:
         return f"Song(\"{self.title}\")"
 

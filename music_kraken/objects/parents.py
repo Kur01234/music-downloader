@@ -9,7 +9,7 @@ from typing import Optional, Dict, Tuple, List, Type, Generic, Any, TypeVar, Set
 from .metadata import Metadata
 from ..utils.config import logging_settings
 from ..utils.shared import HIGHEST_ID
-from ..utils.support_classes.hacking import MetaClass
+from ..utils.hacking import MetaClass
 
 LOGGER = logging_settings["object_logger"]
 
