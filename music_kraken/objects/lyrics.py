@@ -34,6 +34,6 @@ class Lyrics(OuterProxy):
     @property
     def metadata(self) -> Metadata:
         return Metadata({
-            id3Mapping.UNSYNCED_LYRICS
+            id3Mapping.UNSYNCED_LYRICS: self.text.html
         })
 
