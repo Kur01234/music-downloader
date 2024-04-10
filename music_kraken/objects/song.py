@@ -683,3 +683,7 @@ class Label(Base):
         options.extend(self.album_collection.shallow_list)
 
         return options
+
+    @property
+    def option_string(self):
+        return self.__repr__()

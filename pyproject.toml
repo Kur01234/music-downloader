@@ -6,7 +6,7 @@ build-backend = "hatchling.build"
 directory = "dist"
 
 [tool.hatch.build.targets.sdist]
-include = ["music_kraken/*.py" ]
+include = ["music_kraken/*.py", "music_kraken/**/*.py" ]
 
 [tool.hatch.build.targets.wheel]
 packages = ["music_kraken"]
@@ -41,15 +41,16 @@ dependencies = [
     "responses~=0.24.1",
     "beautifulsoup4~=4.11.1",
 
-    "ffmpeg-python~=0.2.0",
+    "pyffmpeg",
     "ffmpeg-progress-yield~=0.7.8",
     "mutagen~=1.46.0",
 
+    "rich",
     "mistune~=3.0.2",
     "html2markdown~=0.1.7",
     "jellyfish~=0.9.0",
     "transliterate~=1.10.2",
-    "pycountry~=24.0.1",
+    "pycountry~=23.12.11",
     
     "python-dotenv~=1.0.1",
     "tqdm~=4.65.0",
