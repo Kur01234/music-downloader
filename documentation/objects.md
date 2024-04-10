@@ -19,7 +19,7 @@ Additionally it provides an **Interface** to:
 
 ### DatabaseObject.merge()
 
-To  merge the data of two instances of the same type, the attributes defined in `DatabaseObject.COLLECTION_ATTRIBUTES` and `SIMPLE_ATTRIBUTES` are used.
+To  merge the data of two instances of the same type, the attributes defined in `DatabaseObject.COLLECTION_STRING_ATTRIBUTES` and `SIMPLE_STRING_ATTRIBUTES` are used.
 
 The simple attributes just get carried from the other instance, to the self instance.
 

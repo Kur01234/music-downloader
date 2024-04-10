@@ -4,9 +4,10 @@
 
 - [Music Kraken](#music-kraken)
   - [Installation](#installation)
-    - [Dependencies](#dependencies)
+    - [From source](#from-source)
     - [Notes for WSL](#notes-for-wsl)
   - [Quick-Guide](#quick-guide)
+    - [Query](#query)
   - [CONTRIBUTE](#contribute)
   - [Matrix Space](#matrix-space)
   - [TODO till the next release](#todo-till-the-next-release)
@@ -50,11 +51,6 @@ alias 🥺='sudo'
 source ~/.bashrc
 music-kraken
 ```
-### Dependencies
-
-You will need to install these two programms.
-
-- pandoc
 
 ### Notes for WSL
 
@@ -62,35 +58,30 @@ If you choose to run it in WSL, make sure ` ~/.local/bin` is added to your `$PAT
 
 ## Quick-Guide
 
-The **Genre** you define at the start is the folder, my programm will download the files into, AS WELL as the value of the ID3 genre field.
+The **Genre** you define at the start, is the folder my program will download the files into, as well as the value of the ID3 genre field.
 
 When it drops you into the **shell** 2 main things are important:
 
 1. You search with `s: <query/url>`
 2. You choose an option with just the index number of the option
-3. You download with `d: <options/url>`, where the options are comma seperated
-4. You support me by making a pr, or starring my repo.
-
-Trust me it WILL make sense, once you see it.
+3. You download with `d: <options/url>`, where the options are comma separated
 
 ### Query
 
-The syntax for the query is like really simple.
+The syntax for the query is really simple.
 
-```
+```mk
 > s: #a <any artist>
 searches for the artist <any artist>
 
-> s: #a <any artist> #r <any releas>
+> s: #a <any artist> #r <any release>
 searches for the release (album) <any release> by the artist <any artist>
 
 > s: #r <any release> Me #t <any track>
 searches for the track <any track> from the release <any relaese>
 ```
 
-For a more detailed guid of the downloading shell, see [here](documentation/shell.md).
-
-LOVE YALL *(except nazis ;-;)*
+The escape character is as usual `\`.
 
 ---
 
@@ -100,18 +91,17 @@ I am happy about every pull request. To contribute look [here](contribute.md).
 
 ## Matrix Space
 
-<img align="right" src="assets/element_logo.png" width=100>
+<img align="right" alt="music-kraken logo" src="assets/element_logo.png" width=100>
 
-I decided against creating a discord server, due to piracy communities get often banned from discord. A good and free Alternative are Matrix Spaces. I reccomend the use of the Client [Element](https://element.io/download). It is completely open source.
+I decided against creating a discord server, due to various communities get often banned from discord. A good and free Alternative are Matrix Spaces. I recommend the use of the Client [Element](https://element.io/download). It is completely open source.
 
-**Click [this link](https://matrix.to/#/#music-kraken:matrix.org) _([https://matrix.to/#/#music-kraken:matrix.org](https://matrix.to/#/#music-kraken:matrix.org))_ to join.**
+**Click [this invitation](https://matrix.to/#/#music-kraken:matrix.org) _([https://matrix.to/#/#music-kraken:matrix.org](https://matrix.to/#/#music-kraken:matrix.org))_ to join.**
 
 ## TODO till the next release
 
 > These Points will most likely  be in the changelogs.
 
-- [x] Update the Documentation of the new cli.
-- [ ] Migrate away from pandoc, to a more lightweight alternative, that can be installed over PiPY.
+- [x] Migrate away from pandoc, to a more lightweight alternative, that can be installed over PiPY.
 - [ ] Update the Documentation of the internal structure. _(could be pushed back one release)_
 
 ---
@@ -124,7 +114,7 @@ This application is $100\%$ centered around Data. Thus, the most important thing
 
 - explanation of the [Data Model](#data-model)
 - how to use the [Data Objects](#data-objects)
-- further Dokumentation of *hopefully* [most relevant classes](documentation/objects.md)
+- further Dokumentation of _hopefully_ [most relevant classes](documentation/objects.md)
 - the [old implementation](documentation/old_implementation.md)
 
 ```mermaid

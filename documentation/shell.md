@@ -10,7 +10,7 @@
 > s: r: #a an Artist #r some random Release
 ```
 
-Searches for an url, or an query
+Searches for an url, or a query
 
 ### Query Syntax
 
@@ -32,6 +32,10 @@ To download something, you either need a direct link, or you need to have alread
 > d: 1
 > d: https://musify.club/release/some-random-release-183028492
 ```
+
+## Results
+
+If options are printed in **bold** they can be downloaded. Else they may or maybe can't be downloaded
 
 ## Misc
 

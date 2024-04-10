@@ -5,6 +5,7 @@
       <module fileurl="file://$PROJECT_DIR$/.idea/music-downloader.iml" filepath="$PROJECT_DIR$/.idea/music-downloader.iml" />
       <module fileurl="file://$PROJECT_DIR$/../rythmbox-id3-lyrics-support/.idea/rythmbox-id3-lyrics-support.iml" filepath="$PROJECT_DIR$/../rythmbox-id3-lyrics-support/.idea/rythmbox-id3-lyrics-support.iml" />
       <module fileurl="file://$PROJECT_DIR$/../forks/sponsorblock.py/.idea/sponsorblock.py.iml" filepath="$PROJECT_DIR$/../forks/sponsorblock.py/.idea/sponsorblock.py.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../youtube-dl/.idea/youtube-dl.iml" filepath="$PROJECT_DIR$/../youtube-dl/.idea/youtube-dl.iml" />
     </modules>
   </component>
 </project>

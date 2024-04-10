@@ -1,0 +1,48 @@
+#!/bin/bash
+
+test=false
+version_bump="minor"
+
+while getopts ":b:t" opt; do
+  case ${opt} in
+    b )
+      version_bump=$OPTARG
+      ;;
+    t )
+      test=true
+      ;;
+    \? )
+      echo "Invalid option: $OPTARG" 1>&2
+      exit 1
+      ;;
+    : )
+      echo "Invalid option: $OPTARG requires an argument" 1>&2
+      exit 1
+      ;;
+  esac
+done
+shift $((OPTIND -1))
+
+# install dev dependencies
+echo "installing dev dependencies..."
+python3 -m pip install -r requirements-dev.txt
+
+# hatch version ${version_bump}
+# git add "music_kraken/__init__.py"
+# git commit -m "bump: ${version_bump}"
+
+# build the wheels
+python3 -m build
+
+# install the newest version
+python3 -m pip install .
+
+if [ "$test" = true ];
+then
+    echo "just a test"
+    twine upload --repository testpypi dist/music_kraken*
+    python3 -m pip install -i https://test.pypi.org/simple/ music-kraken -U
+    exit
+fi
+
+twine upload dist/music_kraken*
