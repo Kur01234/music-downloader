@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 import logging
 
-from .shared import DEBUG, DEBUG_LOGGING, DEBUG_PAGES
+from .shared import DEBUG, DEBUG_LOGGING, DEBUG_DUMP
 from .config import config, read_config, write_config
 from .enums.colors import BColors
 from .path_manager import LOCATIONS
@@ -29,14 +29,14 @@ def user_input(msg: str, color: BColors = BColors.ENDC):
 
 
 def dump_to_file(file_name: str, payload: str, is_json: bool = False, exit_after_dump: bool = False):
-    if not DEBUG_PAGES:
+    if not DEBUG_DUMP:
         return
 
     path = Path(LOCATIONS.TEMP_DIRECTORY, file_name)
     logging.warning(f"dumping {file_name} to: \"{path}\"")
 
-    if is_json:
-        payload = json.dumps(json.loads(payload), indent=4)
+    if is_json and isinstance(payload, str):
+        payload = json.loads(payload)
 
     if isinstance(payload, dict):
         payload = json.dumps(payload, indent=4)

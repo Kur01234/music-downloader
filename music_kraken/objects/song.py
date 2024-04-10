@@ -127,7 +127,8 @@ class Song(Base):
             id3Mapping.ISRC: [self.isrc],
             id3Mapping.LENGTH: [self.length],
             id3Mapping.GENRE: [self.genre],
-            id3Mapping.TRACKNUMBER: [self.tracksort_str]
+            id3Mapping.TRACKNUMBER: [self.tracksort_str],
+            id3Mapping.COMMENT: [self.note.markdown],
         })
 
         # metadata.merge_many([s.get_song_metadata() for s in self.source_collection])  album sources have no relevant metadata for id3

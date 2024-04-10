@@ -15,11 +15,12 @@ from youtube_dl.extractor.youtube import YoutubeIE
 from ...utils.exception.config import SettingValueError
 from ...utils.config import main_settings, youtube_settings, logging_settings
 from ...utils.shared import DEBUG, DEBUG_YOUTUBE_INITIALIZING
+from ...utils.string_processing import clean_song_title
 from ...utils import get_current_millis
 
 from ...utils import dump_to_file
 
-from ...objects import Source, DatabaseObject
+from ...objects import Source, DatabaseObject, ID3Timestamp
 from ..abstract import Page
 from ...objects import (
     Artist,
@@ -198,6 +199,8 @@ class YoutubeMusic(SuperYouTube):
         # https://github.com/ytdl-org/youtube-dl/blob/master/README.md#embedding-youtube-dl
         self.ydl = MusicKrakenYoutubeDL(self, ydl_opts)
         self.yt_ie = MusicKrakenYoutubeIE(downloader=self.ydl, main_instance=self)
+
+        self.download_values_by_url: dict = {}
 
     def _fetch_from_main_page(self):
         """
@@ -480,12 +483,39 @@ class YoutubeMusic(SuperYouTube):
 
 
     def fetch_song(self, source: Source, stop_at_level: int = 1) -> Song:
-        song = Song()
+        ydl_res: dict = self.ydl.extract_info(url=source.url, download=False)
 
-        return song
+        self.fetch_media_url(source=source, ydl_res=ydl_res)
+
+        artist_name = ydl_res.get("artist", ydl_res.get("uploader", "")).rstrip(" - Topic")
+
+        album_list = []
+        if "album" in ydl_res:
+            album_list.append(Album(
+                title=ydl_res.get("album"),
+                date=ID3Timestamp.strptime(ydl_res.get("upload_date"), "%Y%m%d"),
+            ))
+
+        return Song(
+            title=ydl_res.get("track", clean_song_title(ydl_res.get("title"), artist_name=artist_name)),
+            note=ydl_res.get("descriptions"),
+            album_list=album_list,
+            length=int(ydl_res.get("duration", 0)) * 1000,
+            main_artist_list=[Artist(
+                name=artist_name,
+                source_list=[Source(
+                    SourcePages.YOUTUBE_MUSIC, 
+                    f"https://music.youtube.com/channel/{ydl_res.get('channel_id', ydl_res.get('uploader_id', ''))}"
+                )]
+            )],
+            source_list=[Source(
+                SourcePages.YOUTUBE_MUSIC,
+                f"https://music.youtube.com/watch?v={ydl_res.get('id')}"
+            ), source],
+        )
 
 
-    def fetch_media_url(self, source: Source) -> dict:
+    def fetch_media_url(self, source: Source, ydl_res: dict = None) -> dict:
         def _get_best_format(format_list: List[Dict]) -> dict:
             def _calc_score(_f: dict):
                 s = 0
@@ -506,16 +536,20 @@ class YoutubeMusic(SuperYouTube):
 
             return best_format
 
-        ydl_res = self.ydl.extract_info(url=source.url, download=False)
+        if source.url in self.download_values_by_url:
+            return self.download_values_by_url[source.url]
+
+        if ydl_res is None:
+            ydl_res = self.ydl.extract_info(url=source.url, download=False)
         _best_format = _get_best_format(ydl_res.get("formats", [{}]))
 
-        print(_best_format)
-
-        return {
+        self.download_values_by_url[source.url] = {
             "url": _best_format.get("url"),
             "chunk_size": _best_format.get("downloader_options", {}).get("http_chunk_size", main_settings["chunk_size"]),
             "headers": _best_format.get("http_headers", {}),
         }
+
+        return self.download_values_by_url[source.url]
 
     def download_song_to_target(self, source: Source, target: Target, desc: str = None) -> DownloadResult:
         media = self.fetch_media_url(source)

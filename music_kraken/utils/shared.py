@@ -3,10 +3,11 @@ import random
 from .path_manager import LOCATIONS
 from .config import main_settings
 
-DEBUG = False
-DEBUG_LOGGING = DEBUG and True
+DEBUG = True
+DEBUG_LOGGING = DEBUG and False
 DEBUG_YOUTUBE_INITIALIZING = DEBUG and False
 DEBUG_PAGES = DEBUG and False
+DEBUG_DUMP = DEBUG and True
 
 if DEBUG:
     print("DEBUG ACTIVE")
