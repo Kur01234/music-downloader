@@ -79,6 +79,7 @@ class Song(Base):
         Base.__init__(**locals())
 
     UPWARDS_COLLECTION_STRING_ATTRIBUTES = ("album_collection", "main_artist_collection", "feature_artist_collection")
+    TITEL = "title"
 
     def __init_collections__(self) -> None:
         self.album_collection.contain_given_in_attribute = {
@@ -214,8 +215,9 @@ class Album(Base):
         "artist_collection": Collection,
         "song_collection": Collection,
         "label_collection": Collection,
-
     }
+
+    TITEL = "title"
 
     # This is automatically generated
     def __init__(self, title: str = None, unified_title: str = None, album_status: AlbumStatus = None,
@@ -430,6 +432,8 @@ class Artist(Base):
         "label_collection": Collection,
     }
 
+    TITEL = "name"
+
     # This is automatically generated
     def __init__(self, name: str = "", unified_name: str = None, country: Country = None,
                  formed_in: ID3Timestamp = None, notes: FormattedText = None, lyrical_themes: List[str] = None,
@@ -642,6 +646,8 @@ class Label(Base):
         "name": lambda: None,
         "unified_name": lambda: None,
     }
+
+    TITEL = "name"
 
     def __init__(self, name: str = None, unified_name: str = None, notes: FormattedText = None,
                  source_list: List[Source] = None, contact_list: List[Contact] = None,

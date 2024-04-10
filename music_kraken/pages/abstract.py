@@ -28,6 +28,7 @@ from ..utils.config import main_settings
 from ..utils.support_classes.query import Query
 from ..utils.support_classes.download_result import DownloadResult
 from ..utils.string_processing import fit_to_file_system
+from ..utils import trace
 
 INDEPENDENT_DB_OBJECTS = Union[Label, Album, Artist, Song]
 INDEPENDENT_DB_TYPES = Union[Type[Song], Type[Album], Type[Artist], Type[Label]]
@@ -235,6 +236,8 @@ class Page:
         :return detailed_music_object: IT MODIFIES THE INPUT OBJ
         """
 
+        trace(f"fetching {type(music_object).__name__} ({music_object.title_string})")
+
         # creating a new object, of the same type
         new_music_object: Optional[DatabaseObject] = None
 
@@ -332,6 +335,7 @@ class Page:
 
     def _download(self, music_object: DatabaseObject, naming_dict: NamingDict, download_all: bool = False,
                   skip_details: bool = False, process_metadata_anyway: bool = False) -> DownloadResult:
+        trace(f"downloading {type(music_object).__name__} ({music_object.title_string})")
         skip_next_details = skip_details
 
         # Skips all releases, that are defined in shared.ALBUM_TYPE_BLACKLIST, if download_all is False

@@ -67,6 +67,8 @@ class OuterProxy:
     DOWNWARDS_COLLECTION_STRING_ATTRIBUTES = tuple()
     UPWARDS_COLLECTION_STRING_ATTRIBUTES = tuple()
 
+    TITEL = "id"
+
     def __init__(self, _id: int = None, dynamic: bool = False, **kwargs):
         _automatic_id: bool = False
 
@@ -218,3 +220,7 @@ class OuterProxy:
 
     def __repr__(self):
         return f"{type(self).__name__}({', '.join(key + ': ' + str(val) for key, val in self.indexing_values)})"
+
+    @property
+    def title_string(self) -> str:
+        return str(self.__getattribute__(self.TITEL))
