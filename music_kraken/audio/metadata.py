@@ -5,7 +5,7 @@ from typing import List
 import logging
 from PIL import Image
 
-from ..utils.config import logging_settings
+from ..utils.config import logging_settings, main_settings
 from ..objects import Song, Target, Metadata
 from ..connection import Connection
 
@@ -75,14 +75,27 @@ def write_metadata_to_target(metadata: Metadata, target: Target, song: Song):
 
         converted_target: Target = Target.temp(name=f"{song.title}.jpeg")
         with Image.open(temp_target.file_path) as img:
+            # crop the image if it isn't square in the middle with minimum data loss
+            width, height = img.size
+            if width != height:
+                if width > height:
+                    img = img.crop((width // 2 - height // 2, 0, width // 2 + height // 2, height))
+                else:
+                    img = img.crop((0, height // 2 - width // 2, width, height // 2 + width // 2))
+
+            # resize the image to the preferred resolution
+            img.thumbnail((main_settings["preferred_artwork_resolution"], main_settings["preferred_artwork_resolution"]))
+
             img.save(converted_target.file_path, "JPEG")
 
+        # https://stackoverflow.com/questions/70228440/mutagen-how-can-i-correctly-embed-album-art-into-mp3-file-so-that-i-can-see-t
+        id3_object.frames.delall("APIC")
         id3_object.frames.add(
             APIC(
-                encoding=3,
+                encoding=0,
                 mime="image/jpeg",
                 type=3,
-                desc="Cover",
+                desc=u"Cover",
                 data=converted_target.read_bytes(),
             )
         )

@@ -485,6 +485,8 @@ class YoutubeMusic(SuperYouTube):
     def fetch_song(self, source: Source, stop_at_level: int = 1) -> Song:
         ydl_res: dict = self.ydl.extract_info(url=source.url, download=False)
 
+        dump_to_file(f"eeee.json", json.dumps(ydl_res), is_json=True, exit_after_dump=False)
+
         self.fetch_media_url(source=source, ydl_res=ydl_res)
 
         artist_name = ydl_res.get("artist", ydl_res.get("uploader", "")).rstrip(" - Topic")

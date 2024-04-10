@@ -43,7 +43,7 @@ class Artwork:
 
     @property
     def best_variant(self) -> ArtworkVariant:
-        if len(self._variant_mapping) == 0:
+        if len(self._variant_mapping.keys()) <= 0:
             return None
         return min(self._variant_mapping.values(), key=lambda x: x["deviation"])
 
