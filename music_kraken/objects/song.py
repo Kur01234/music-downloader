@@ -77,7 +77,7 @@ class Song(Base):
                  genre: str = None, note: FormattedText = None, source_list: List[Source] = None,
                  target_list: List[Target] = None, lyrics_list: List[Lyrics] = None,
                  main_artist_list: List[Artist] = None, feature_artist_list: List[Artist] = None,
-                 album_list: List[Album] = None, tracksort: int = 0, **kwargs) -> None:
+                 album_list: List[Album] = None, tracksort: int = 0, artwork: Optional[Artwork] = None, **kwargs) -> None:
 
         Base.__init__(**locals())
 
