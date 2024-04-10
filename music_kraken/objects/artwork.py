@@ -46,3 +46,6 @@ class Artwork:
         for key, value in other._variant_mapping.items():
             if key not in self._variant_mapping or override:
                 self._variant_mapping[key] = value
+
+    def __eq__(self, other: Artwork) -> bool:
+        return any(a == b for a, b in zip(self._variant_mapping.keys(), other._variant_mapping.keys()))

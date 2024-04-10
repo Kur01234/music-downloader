@@ -26,7 +26,12 @@ class InnerData:
     If the data in the wrapper class has to be merged, then this class is just replaced and garbage collected.
     """
 
-    def __init__(self, **kwargs):
+    def __init__(self, object_type, **kwargs):
+        # initialize the default values
+        self.__default_values = {}
+        for name, factory in object_type._default_factories.items():
+            self.__default_values[name] = factory()
+
         for key, value in kwargs.items():
             self.__setattr__(key, value)
 
@@ -42,7 +47,7 @@ class InnerData:
 
         for key, value in __other.__dict__.copy().items():
             # just set the other value if self doesn't already have it
-            if key not in self.__dict__:
+            if key not in self.__dict__ or (key in self.__dict__ and self.__dict__[key] == self.__default_values.get(key)):
                 self.__setattr__(key, value)
                 continue
 
@@ -98,7 +103,7 @@ class OuterProxy:
                 del kwargs[name]
 
         self._fetched_from: dict = {}
-        self._inner: InnerData = InnerData(**kwargs)
+        self._inner: InnerData = InnerData(type(self), **kwargs)
         self.__init_collections__()
 
         for name, data_list in collection_data.items():
