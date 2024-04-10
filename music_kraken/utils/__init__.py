@@ -47,8 +47,8 @@ def dump_to_file(file_name: str, payload: str, is_json: bool = False, exit_after
 
 
 def trace(msg: str):
-    if DEBUG_TRACE:
-        logging.debug(msg)
+    if not DEBUG_TRACE:
+        return
 
     output("trace: " + msg, BColors.OKBLUE)
 

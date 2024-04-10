@@ -12,7 +12,7 @@ if not load_dotenv(Path(__file__).parent.parent.parent / ".env"):
 
 __stage__ = os.getenv("STAGE", "prod")
 
-DEBUG = __stage__ == "dev" and True
+DEBUG = (__stage__ == "dev") and True
 DEBUG_LOGGING = DEBUG and False
 DEBUG_TRACE = DEBUG and True
 DEBUG_YOUTUBE_INITIALIZING = DEBUG and False
