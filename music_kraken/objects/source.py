@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from ..utils.enums.source import SourcePages, SourceTypes
 from ..utils.config import youtube_settings
+from ..utils.string_processing import hash_url
 
 from .metadata import Mapping, Metadata
 from .parents import OuterProxy
@@ -88,7 +89,7 @@ class Source(OuterProxy):
 
     @property
     def hash_url(self) -> str:
-        return self.url.strip().lower().lstrip("https://").lstrip("http://")
+        return hash_url(self.url)
 
     @property
     def metadata(self) -> Metadata:

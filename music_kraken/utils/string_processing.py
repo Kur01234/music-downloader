@@ -96,6 +96,9 @@ def unify_punctuation(to_unify: str) -> str:
         to_unify = to_unify.replace(char, UNIFY_TO)
     return to_unify
 
+def hash_url(url: str) -> int:
+    return url.strip().lower().lstrip("https://").lstrip("http://")
+
 
 def remove_feature_part_from_track(title: str) -> str:
     if ")" != title[-1]:

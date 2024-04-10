@@ -27,6 +27,10 @@ The further you choose to be able to go back, the higher the memory usage.
 
     EmptyLine(),
 
+    Attribute(name="preferred_artwork_resolution", default_value=100),
+
+    EmptyLine(),
+
     Attribute(name="sort_by_date", default_value=True, description="If this is set to true, it will set the albumsort attribute such that,\nthe albums are sorted by date"),
     Attribute(name="sort_album_by_type", default_value=True, description="""If this is set to true, it will set the albumsort attribute such that,
 the albums are put into categories before being sorted.
@@ -145,6 +149,9 @@ class SettingsStructure(TypedDict):
     show_download_errors_threshold: float
     language: str
     user_agent: str
+
+    # artwork
+    preferred_artwork_resolution: int
 
     # paths
     music_directory: Path
