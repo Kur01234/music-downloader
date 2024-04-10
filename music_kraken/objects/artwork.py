@@ -23,8 +23,11 @@ class ArtworkVariant(TypedDict):
 
 
 class Artwork:
-    def __init__(self, variants: List[ArtworkVariant] = None) -> None:
+    def __init__(self, *variants: List[ArtworkVariant]) -> None:
         self._variant_mapping: Dict[str, ArtworkVariant] = {}
+
+        for variant in variants:
+            self.append(**variant)
 
     @staticmethod
     def _calculate_deviation(*dimensions: List[int]) -> float:

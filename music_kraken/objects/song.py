@@ -11,6 +11,7 @@ from .collection import Collection
 from .formatted_text import FormattedText
 from .lyrics import Lyrics
 from .contact import Contact
+from .artwork import Artwork
 from .metadata import (
     Mapping as id3Mapping,
     ID3Timestamp,
@@ -43,6 +44,7 @@ class Song(Base):
     genre: str
     note: FormattedText
     tracksort: int
+    artwork: Artwork
 
     source_collection: SourceCollection
     target_collection: Collection[Target]
@@ -57,6 +59,7 @@ class Song(Base):
         "source_collection": SourceCollection,
         "target_collection": Collection,
         "lyrics_collection": Collection,
+        "artwork": Artwork,
 
         "main_artist_collection": Collection,
         "album_collection": Collection,

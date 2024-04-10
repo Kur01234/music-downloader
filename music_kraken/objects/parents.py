@@ -37,9 +37,6 @@ class InnerData:
 
     def __merge__(self, __other: InnerData, override: bool = False):
         """
-        TODO
-        is default is totally ignored
-
         :param __other:
         :param override:
         :return:
