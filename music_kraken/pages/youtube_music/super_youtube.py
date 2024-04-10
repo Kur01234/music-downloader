@@ -128,7 +128,7 @@ class SuperYouTube(Page):
     SOURCE_TYPE = SourcePages.YOUTUBE
     LOGGER = logging_settings["youtube_logger"]
 
-    NO_ADDITIONAL_DATA_FROM_SONG = True
+    NO_ADDITIONAL_DATA_FROM_SONG = False
 
     def __init__(self, *args, **kwargs):
         self.download_connection: Connection = Connection(

@@ -87,6 +87,10 @@ class Source(OuterProxy):
         })
 
     @property
+    def hash_url(self) -> str:
+        return self.url.strip().lower().lstrip("https://").lstrip("http://")
+
+    @property
     def metadata(self) -> Metadata:
         return self.get_song_metadata()
 

@@ -60,3 +60,7 @@ misc functions
 def get_current_millis() -> int:
     dt = datetime.now()
     return int(dt.microsecond / 1_000)
+
+
+def get_unix_time() -> int:
+    return int(datetime.now().timestamp())

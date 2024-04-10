@@ -46,6 +46,7 @@ The folder music kraken should put the songs into."""),
         "Mixtape"
     ], options=("Studio Album", "EP (Extended Play)", "Single", "Live Album", "Compilation Album", "Mixtape", "Demo", "Other"), description="""Music Kraken ignores all albums of those types.
 Following album types exist in the programm:"""),
+    Attribute(name="refresh_after", default_value=161, description="The time in seconds, after which a song/album/artist/label is newly fetched."),
 
     EmptyLine(),
 
@@ -124,6 +125,7 @@ class SettingsStructure(TypedDict):
     happy_messages: List[str]
     modify_gc: bool
     id_bits: int
+    refresh_after: int
 
     # audio
     bitrate: int

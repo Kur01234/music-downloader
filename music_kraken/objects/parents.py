@@ -7,7 +7,8 @@ from functools import lru_cache
 from typing import Optional, Dict, Tuple, List, Type, Generic, Any, TypeVar, Set
 
 from .metadata import Metadata
-from ..utils.config import logging_settings
+from ..utils import get_unix_time
+from ..utils.config import logging_settings, main_settings
 from ..utils.shared import HIGHEST_ID
 from ..utils.hacking import MetaClass
 
@@ -96,6 +97,7 @@ class OuterProxy:
 
                 del kwargs[name]
 
+        self._fetched_from: dict = {}
         self._inner: InnerData = InnerData(**kwargs)
         self.__init_collections__()
 
@@ -175,6 +177,21 @@ class OuterProxy:
 
         self._inner.__merge__(__other._inner, override=override)
         __other._inner = self._inner
+
+    def mark_as_fetched(self, *url_hash_list: List[str]):
+        for url_hash in url_hash_list:
+            self._fetched_from[url_hash] = {
+                "time": get_unix_time(),
+                "url": url_hash,
+            }
+
+    def already_fetched_from(self, url_hash: str) -> bool:
+        res = self._fetched_from.get(url_hash, None)
+
+        if res is None:
+            return False
+
+        return get_unix_time() - res["time"] < main_settings["refresh_after"]
 
     @property
     def metadata(self) -> Metadata:

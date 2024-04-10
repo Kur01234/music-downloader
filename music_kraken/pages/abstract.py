@@ -218,8 +218,12 @@ class Page:
     def song_search(self, song: Song) -> List[Song]:
         return []
 
-    def fetch_details(self, music_object: DatabaseObject, stop_at_level: int = 1,
-                      post_process: bool = True) -> DatabaseObject:
+    def fetch_details(
+        self, 
+        music_object: DatabaseObject, 
+        stop_at_level: int = 1,
+        post_process: bool = True
+    ) -> DatabaseObject:
         """
         when a music object with lacking data is passed in, it returns
         the SAME object **(no copy)** with more detailed data.
@@ -235,36 +239,48 @@ class Page:
         this gets ignored
         :return detailed_music_object: IT MODIFIES THE INPUT OBJ
         """
-
-        trace(f"fetching {type(music_object).__name__} ({music_object.title_string})")
-
         # creating a new object, of the same type
         new_music_object: Optional[DatabaseObject] = None
+        fetched_from_url: List[str] = []
 
         # only certain database objects, have a source list
         if isinstance(music_object, INDEPENDENT_DB_OBJECTS):
             source: Source
             for source in music_object.source_collection.get_sources_from_page(self.SOURCE_TYPE):
+                if music_object.already_fetched_from(source.hash_url):
+                    continue
+
                 tmp = self.fetch_object_from_source(
                     source=source,
                     enforce_type=type(music_object),
                     stop_at_level=stop_at_level,
-                    post_process=False
+                    post_process=False,
+                    type_string=type(music_object).__name__,
+                    title_string=music_object.title_string,
                 )
 
                 if new_music_object is None:
                     new_music_object = tmp
                 else:
                     new_music_object.merge(tmp)
+                fetched_from_url.append(source.hash_url)
 
         if new_music_object is not None:
             music_object.merge(new_music_object)
 
+        music_object.mark_as_fetched(*fetched_from_url)
         return music_object
 
-    def fetch_object_from_source(self, source: Source, stop_at_level: int = 2,
-                                 enforce_type: Type[DatabaseObject] = None, post_process: bool = True) -> Optional[
-        DatabaseObject]:
+    def fetch_object_from_source(
+        self, 
+        source: Source, 
+        stop_at_level: int = 2,
+        enforce_type: Type[DatabaseObject] = None, 
+        post_process: bool = True,
+        type_string: str = "",
+        title_string: str = "",
+    ) -> Optional[DatabaseObject]:
+
         obj_type = self.get_source_type(source)
 
         if obj_type is None:
@@ -289,7 +305,9 @@ class Page:
             self.LOGGER.warning(f"Can't fetch details of type: {obj_type}")
             return None
 
-        if stop_at_level > 1:
+        if stop_at_level > 0:
+            trace(f"fetching {type_string} [{title_string}] [stop_at_level={stop_at_level}]")
+
             collection: Collection
             for collection_str in music_object.DOWNWARDS_COLLECTION_STRING_ATTRIBUTES:
                 collection = music_object.__getattribute__(collection_str)
@@ -312,8 +330,13 @@ class Page:
     def fetch_label(self, source: Source, stop_at_level: int = 1) -> Label:
         return Label()
 
-    def download(self, music_object: DatabaseObject, genre: str, download_all: bool = False,
-                 process_metadata_anyway: bool = False) -> DownloadResult:
+    def download(
+        self, 
+        music_object: DatabaseObject, 
+        genre: str, 
+        download_all: bool = False,
+        process_metadata_anyway: bool = False
+    ) -> DownloadResult:
         naming_dict: NamingDict = NamingDict({"genre": genre})
 
         def fill_naming_objects(naming_music_object: DatabaseObject):
@@ -333,9 +356,15 @@ class Page:
 
         return self._download(music_object, naming_dict, download_all, process_metadata_anyway=process_metadata_anyway)
 
-    def _download(self, music_object: DatabaseObject, naming_dict: NamingDict, download_all: bool = False,
-                  skip_details: bool = False, process_metadata_anyway: bool = False) -> DownloadResult:
-        trace(f"downloading {type(music_object).__name__} ({music_object.title_string})")
+    def _download(
+        self, 
+        music_object: DatabaseObject, 
+        naming_dict: NamingDict, 
+        download_all: bool = False,
+        skip_details: bool = False, 
+        process_metadata_anyway: bool = False
+    ) -> DownloadResult:
+        trace(f"downloading {type(music_object).__name__} [{music_object.title_string}]")
         skip_next_details = skip_details
 
         # Skips all releases, that are defined in shared.ALBUM_TYPE_BLACKLIST, if download_all is False
@@ -346,8 +375,8 @@ class Page:
             if not download_all and music_object.album_type.value in main_settings["album_type_blacklist"]:
                 return DownloadResult()
 
-        if not isinstance(music_object, Song) or not self.NO_ADDITIONAL_DATA_FROM_SONG:
-            self.fetch_details(music_object=music_object, stop_at_level=2)
+        if not (isinstance(music_object, Song) and self.NO_ADDITIONAL_DATA_FROM_SONG):
+            self.fetch_details(music_object=music_object, stop_at_level=1)
 
         naming_dict.add_object(music_object)
 
