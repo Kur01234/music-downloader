@@ -16,7 +16,7 @@ class FormattedText:
 
     @property
     def is_empty(self) -> bool:
-        return self.doc is None
+        return self.html == ""
 
     def __eq__(self, other) -> False:
         if type(other) != type(self):

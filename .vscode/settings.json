@@ -16,9 +16,11 @@
     },
     "python.formatting.provider": "none",
     "cSpell.words": [
+        "APIC",
         "Bandcamp",
         "dotenv",
         "levenshtein",
-        "OKBLUE"
+        "OKBLUE",
+        "Referer"
     ]
 }

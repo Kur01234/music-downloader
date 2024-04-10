@@ -20,7 +20,7 @@ from ...utils import get_current_millis
 
 from ...utils import dump_to_file
 
-from ...objects import Source, DatabaseObject, ID3Timestamp
+from ...objects import Source, DatabaseObject, ID3Timestamp, Artwork
 from ..abstract import Page
 from ...objects import (
     Artist,
@@ -501,6 +501,7 @@ class YoutubeMusic(SuperYouTube):
             note=ydl_res.get("descriptions"),
             album_list=album_list,
             length=int(ydl_res.get("duration", 0)) * 1000,
+            artwork=Artwork(*ydl_res.get("thumbnails", [])),
             main_artist_list=[Artist(
                 name=artist_name,
                 source_list=[Source(
@@ -551,6 +552,7 @@ class YoutubeMusic(SuperYouTube):
 
         return self.download_values_by_url[source.url]
 
+
     def download_song_to_target(self, source: Source, target: Target, desc: str = None) -> DownloadResult:
         media = self.fetch_media_url(source)
 
@@ -570,6 +572,7 @@ class YoutubeMusic(SuperYouTube):
             result.merge(super().download_song_to_target(source=source, target=target, desc=desc))
 
         return result
+
 
     def __del__(self):
         self.ydl.__exit__()

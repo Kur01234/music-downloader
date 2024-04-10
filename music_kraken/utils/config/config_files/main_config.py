@@ -27,7 +27,7 @@ The further you choose to be able to go back, the higher the memory usage.
 
     EmptyLine(),
 
-    Attribute(name="preferred_artwork_resolution", default_value=100),
+    Attribute(name="preferred_artwork_resolution", default_value=1000),
 
     EmptyLine(),
 

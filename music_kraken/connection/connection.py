@@ -23,7 +23,7 @@ from ..utils.hacking import merge_args
 class Connection:
     def __init__(
             self,
-            host: str,
+            host: str = None,
             proxies: List[dict] = None,
             tries: int = (len(main_settings["proxies"]) + 1) * main_settings["tries_per_proxy"],
             timeout: int = 7,
@@ -45,7 +45,7 @@ class Connection:
         self.HEADER_VALUES = dict() if header_values is None else header_values
 
         self.LOGGER = logger
-        self.HOST = urlparse(host)
+        self.HOST = host if host is None else urlparse(host)
         self.TRIES = tries
         self.TIMEOUT = timeout
         self.rotating_proxy = RotatingProxy(proxy_list=proxies)
@@ -87,21 +87,26 @@ class Connection:
             time.sleep(interval)
 
     def base_url(self, url: ParseResult = None):
-        if url is None:
+        if url is None and self.HOST is not None:
             url = self.HOST
 
         return urlunsplit((url.scheme, url.netloc, "", "", ""))
 
     def get_header(self, **header_values) -> Dict[str, str]:
-        return {
+        headers = {
             "user-agent": main_settings["user_agent"],
             "User-Agent": main_settings["user_agent"],
             "Connection": "keep-alive",
-            "Host": self.HOST.netloc,
-            "Referer": self.base_url(),
             "Accept-Language": main_settings["language"],
-            **header_values
         }
+
+        if self.HOST is not None:
+            headers["Host"] = self.HOST.netloc
+            headers["Referer"] = self.base_url(url=self.HOST)
+
+        headers.update(header_values)
+
+        return headers
 
     def rotate(self):
         self.session.proxies = self.rotating_proxy.rotate()

@@ -33,7 +33,7 @@ class Artwork:
     def _calculate_deviation(*dimensions: List[int]) -> float:
         return sum(abs(d - main_settings["preferred_artwork_resolution"]) for d in dimensions) / len(dimensions)
 
-    def append(self, url: str, width: int, height: int) -> None:
+    def append(self, url: str, width: int, height: int, **kwargs) -> None:
         self._variant_mapping[hash_url(url=url)] = {
             "url": url,
             "width": width,
@@ -43,6 +43,8 @@ class Artwork:
 
     @property
     def best_variant(self) -> ArtworkVariant:
+        if len(self._variant_mapping) == 0:
+            return None
         return min(self._variant_mapping.values(), key=lambda x: x["deviation"])
 
     def __merge__(self, other: Artwork, override: bool = False) -> None:

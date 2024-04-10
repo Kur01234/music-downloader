@@ -1,14 +1,18 @@
 import mutagen
-from mutagen.id3 import ID3, Frame
+from mutagen.id3 import ID3, Frame, APIC
 from pathlib import Path
 from typing import List
 import logging
+from PIL import Image
 
 from ..utils.config import logging_settings
 from ..objects import Song, Target, Metadata
-
+from ..connection import Connection
 
 LOGGER = logging_settings["tagging_logger"]
+
+
+artwork_connection: Connection = Connection()
 
 
 class AudioMetadata:
@@ -52,11 +56,39 @@ class AudioMetadata:
     file_location = property(fget=lambda self: self._file_location, fset=set_file_location)
 
 
-def write_metadata_to_target(metadata: Metadata, target: Target):
+def write_metadata_to_target(metadata: Metadata, target: Target, song: Song):
     if not target.exists:
+        LOGGER.warning(f"file {target.file_path} not found")
         return
 
     id3_object = AudioMetadata(file_location=target.file_path)
+
+    if song.artwork.best_variant is not None:
+        r = artwork_connection.get(
+            url=song.artwork.best_variant["url"],
+            disable_cache=False,
+        )
+
+        temp_target: Target = Target.temp()
+        with temp_target.open("wb") as f:
+            f.write(r.content)
+
+        converted_target: Target = Target.temp(name=f"{song.title}.jpeg")
+        with Image.open(temp_target.file_path) as img:
+            img.save(converted_target.file_path, "JPEG")
+
+        id3_object.frames.add(
+            APIC(
+                encoding=3,
+                mime="image/jpeg",
+                type=3,
+                desc="Cover",
+                data=converted_target.read_bytes(),
+            )
+        )
+
+        mutagen_file = mutagen.File(target.file_path)
+
     id3_object.add_metadata(metadata)
     id3_object.save()
 
@@ -70,19 +102,9 @@ def write_metadata(song: Song, ignore_file_not_found: bool = True):
             else:
                 raise ValueError(f"{song.target.file} not found")
 
-        id3_object = AudioMetadata(file_location=target.file_path)
-        id3_object.add_song_metadata(song=song)
-        id3_object.save()
+        write_metadata_to_target(metadata=song.metadata, target=target, song=song)
 
 
 def write_many_metadata(song_list: List[Song]):
     for song in song_list:
         write_metadata(song=song, ignore_file_not_found=True)
-
-
-if __name__ == "__main__":
-    print("called directly")
-    filepath = "/home/lars/Music/deathcore/Archspire/Bleed the Future/Bleed the Future.mp3"
-
-    audio_metadata = AudioMetadata(file_location=filepath)
-    print(audio_metadata.frames.pprint())

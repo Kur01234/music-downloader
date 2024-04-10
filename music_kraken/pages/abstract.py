@@ -464,7 +464,7 @@ class Page:
 
         self.post_process_hook(song, temp_target)
 
-        write_metadata_to_target(song.metadata, temp_target)
+        write_metadata_to_target(song.metadata, temp_target, song)
 
         r = DownloadResult()
 

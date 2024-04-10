@@ -22,4 +22,6 @@ from .contact import Contact
 
 from .parents import OuterProxy
 
+from .artwork import Artwork
+
 DatabaseObject = TypeVar('T', bound=OuterProxy)

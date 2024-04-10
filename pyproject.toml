@@ -44,6 +44,7 @@ dependencies = [
     "pyffmpeg~=2.4.2.18.1",
     "ffmpeg-progress-yield~=0.7.8",
     "mutagen~=1.46.0",
+    "pillow~=10.3.0",
 
     "rich~=13.7.1",
     "mistune~=3.0.2",

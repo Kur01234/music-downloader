@@ -3,11 +3,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import List, Tuple, TextIO, Union
 import logging
-
+import random
 import requests
 from tqdm import tqdm
 
 from .parents import OuterProxy
+from ..utils.shared import HIGHEST_ID
 from ..utils.config import main_settings, logging_settings
 from ..utils.string_processing import fit_to_file_system
 
@@ -28,6 +29,10 @@ class Target(OuterProxy):
 
     _default_factories = {
     }
+
+    @classmethod
+    def temp(cls, name: str = str(random.randint(0, HIGHEST_ID))) -> P:
+        return cls(main_settings["temp_directory"] / name)
 
     # This is automatically generated
     def __init__(self, file_path: Union[Path, str], relative_to_music_dir: bool = False, **kwargs) -> None:
@@ -106,3 +111,6 @@ class Target(OuterProxy):
             
     def delete(self):
         self.file_path.unlink(missing_ok=True)
+
+    def read_bytes(self) -> bytes:
+        return self.file_path.read_bytes()
