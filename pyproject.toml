@@ -41,11 +41,11 @@ dependencies = [
     "responses~=0.24.1",
     "beautifulsoup4~=4.11.1",
 
-    "pyffmpeg",
+    "pyffmpeg~=2.4.2.18.1",
     "ffmpeg-progress-yield~=0.7.8",
     "mutagen~=1.46.0",
 
-    "rich",
+    "rich~=13.7.1",
     "mistune~=3.0.2",
     "html2markdown~=0.1.7",
     "jellyfish~=0.9.0",
