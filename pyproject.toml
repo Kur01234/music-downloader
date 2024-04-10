@@ -51,6 +51,7 @@ dependencies = [
     "transliterate~=1.10.2",
     "pycountry~=24.0.1",
     
+    "python-dotenv~=1.0.1",
     "tqdm~=4.65.0",
     "platformdirs~=4.2.0",
     "pathvalidate~=2.5.2",

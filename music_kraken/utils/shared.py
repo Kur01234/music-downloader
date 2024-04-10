@@ -1,10 +1,20 @@
 import random
+from dotenv import load_dotenv
+from pathlib import Path
+import os
+
 
 from .path_manager import LOCATIONS
 from .config import main_settings
 
-DEBUG = True
+if not load_dotenv(Path(__file__).parent.parent.parent / ".env"):
+    load_dotenv(Path(__file__).parent.parent.parent / ".env.example")
+
+__stage__ = os.getenv("STAGE", "prod")
+
+DEBUG = __stage__ == "dev" and True
 DEBUG_LOGGING = DEBUG and False
+DEBUG_TRACE = DEBUG and True
 DEBUG_YOUTUBE_INITIALIZING = DEBUG and False
 DEBUG_PAGES = DEBUG and False
 DEBUG_DUMP = DEBUG and True

@@ -3,7 +3,7 @@ from pathlib import Path
 import json
 import logging
 
-from .shared import DEBUG, DEBUG_LOGGING, DEBUG_DUMP
+from .shared import DEBUG, DEBUG_LOGGING, DEBUG_DUMP, DEBUG_TRACE
 from .config import config, read_config, write_config
 from .enums.colors import BColors
 from .path_manager import LOCATIONS
@@ -47,7 +47,7 @@ def dump_to_file(file_name: str, payload: str, is_json: bool = False, exit_after
 
 
 def trace(msg: str):
-    if DEBUG_LOGGING:
+    if DEBUG_TRACE:
         logging.debug(msg)
 
     output("trace: " + msg, BColors.OKBLUE)

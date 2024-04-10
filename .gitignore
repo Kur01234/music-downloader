@@ -16,3 +16,5 @@ venv
 .idea/aws.xml
 
 windows
+
+.env
