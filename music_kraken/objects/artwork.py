@@ -41,3 +41,8 @@ class Artwork:
     @property
     def best_variant(self) -> ArtworkVariant:
         return min(self._variant_mapping.values(), key=lambda x: x["deviation"])
+
+    def __merge__(self, other: Artwork, override: bool = False) -> None:
+        for key, value in other._variant_mapping.items():
+            if key not in self._variant_mapping or override:
+                self._variant_mapping[key] = value
