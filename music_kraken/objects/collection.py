@@ -193,7 +193,7 @@ class Collection(Generic[T]):
 
     def _find_object_in_self(self, __object: T) -> Optional[T]:
         for name, value in __object.indexing_values:
-            if value is None:
+            if value is None or value == __object._default_factories.get(name, lambda: None)():
                 continue
             if value in self._indexed_values[name]:
                 return self._indexed_to_objects[value][0]
