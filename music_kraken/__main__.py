@@ -144,7 +144,7 @@ def cli():
         genre=genre,
         download_all=arguments.all,
         direct_download_url=arguments.url,
-        process_metadata_anyway=arguments.force_post_process or arguments.test
+        process_metadata_anyway=True or arguments.test
     )
 
 

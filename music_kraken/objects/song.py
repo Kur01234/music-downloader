@@ -320,40 +320,16 @@ class Album(Base):
             return
 
         tracksort_map: Dict[int, Song] = {
-            song.tracksort: song for song in self.song_collection if song.tracksort is not None
+            song.tracksort: song for song in self.song_collection if song.tracksort != 0
         }
 
-        # place the songs, with set tracksort attribute according to it
-        for tracksort, song in tracksort_map.items():
-            index = tracksort - 1
 
-            """
-            I ONLY modify the `Collection._data` attribute directly, 
-            to bypass the mapping of the attributes, because I will add the item in the next step
-            """
+        existing_list = self.song_collection.shallow_list
+        for i in range(1, len(existing_list) + 1):
+            if i not in tracksort_map:
+                tracksort_map[i] = existing_list.pop(0)
+                tracksort_map[i].tracksort = i
 
-            """
-            but for some reason, neither 
-            `self.song_collection._data.index(song)`
-            `self.song_collection._data.remove(song)`
-            get the right object.
-            
-            I have NO FUCKING CLUE why xD
-            But I just implemented it myself.
-            """
-            for old_index, temp_song in enumerate(self.song_collection._data):
-                if song is temp_song:
-                    break
-
-            # the list can't be empty
-            del self.song_collection._data[old_index]
-            self.song_collection._data.insert(index, song)
-
-        # fill in the empty tracksort attributes
-        for i, song in enumerate(self.song_collection):
-            if song.tracksort is not None:
-                continue
-            song.tracksort = i + 1
 
     def compile(self, merge_into: bool = False):
         """

@@ -335,7 +335,7 @@ class Page:
         music_object: DatabaseObject, 
         genre: str, 
         download_all: bool = False,
-        process_metadata_anyway: bool = False
+        process_metadata_anyway: bool = True
     ) -> DownloadResult:
         naming_dict: NamingDict = NamingDict({"genre": genre})
 
@@ -362,7 +362,7 @@ class Page:
         naming_dict: NamingDict, 
         download_all: bool = False,
         skip_details: bool = False, 
-        process_metadata_anyway: bool = False
+        process_metadata_anyway: bool = True
     ) -> DownloadResult:
         trace(f"downloading {type(music_object).__name__} [{music_object.title_string}]")
         skip_next_details = skip_details
@@ -381,7 +381,6 @@ class Page:
         if isinstance(music_object, Album):
             music_object.update_tracksort()
             
-
         naming_dict.add_object(music_object)
 
         if isinstance(music_object, Song):
@@ -400,7 +399,7 @@ class Page:
 
         return download_result
 
-    def _download_song(self, song: Song, naming_dict: NamingDict, process_metadata_anyway: bool = False):
+    def _download_song(self, song: Song, naming_dict: NamingDict, process_metadata_anyway: bool = True):
         if "genre" not in naming_dict and song.genre is not None:
             naming_dict["genre"] = song.genre
 
