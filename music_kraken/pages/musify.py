@@ -118,7 +118,13 @@ class Musify(Page):
     def __init__(self, *args, **kwargs):
         self.connection: Connection = Connection(
             host="https://musify.club/",
-            logger=self.LOGGER
+            logger=self.LOGGER,
+        )
+
+        self.stream_connection: Connection = Connection(
+            host="https://musify.club/",
+            logger=self.LOGGER,
+            semantic_not_found=False,
         )
         
         super().__init__(*args, **kwargs)
@@ -1121,4 +1127,4 @@ class Musify(Page):
 
             self.LOGGER.warning(f"The source has no audio link. Falling back to {endpoint}.")
 
-        return self.connection.stream_into(endpoint, target, raw_url=True)
+        return self.stream_connection.stream_into(endpoint, target, raw_url=True, exclude_headers=["Host"])

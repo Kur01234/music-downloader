@@ -119,7 +119,7 @@ class Connection:
     ) -> Dict[str, str]:
         headers = self.get_header(**(headers or {}))
         if not refer_from_origin:
-            headers["Referer"] = self.base_url(url=url)
+            headers["Referer"] = self.base_url(url=url) 
 
         return headers
 
@@ -145,6 +145,7 @@ class Connection:
             disable_cache: bool = None,
             method: str = None,
             name: str = "",
+            exclude_headers: List[str] = None,
             **kwargs
     ) -> Optional[requests.Response]:
         if method is None:
@@ -157,7 +158,6 @@ class Connection:
         current_kwargs = copy.copy(locals())
         current_kwargs.pop("kwargs")
         current_kwargs.update(**kwargs)
-
 
         parsed_url = urlparse(url)
         
@@ -194,6 +194,10 @@ class Connection:
 
         if timeout is None:
             timeout = self.TIMEOUT
+
+        for header in exclude_headers or []:
+            if header in headers:
+                del headers[header]
 
         r = None
         connection_failed = False
@@ -308,7 +312,7 @@ class Connection:
             return DownloadResult(error_message=f"Could not establish a stream from: {url}")
 
         target.create_path()
-        total_size = int(r.headers.get('content-length'))
+        total_size = int(r.headers.get('content-length', r.headers.get('Content-Length', chunk_size)))
         progress = 0
 
         retry = False
