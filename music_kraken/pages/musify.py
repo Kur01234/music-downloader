@@ -21,7 +21,8 @@ from ..objects import (
     Label,
     Target,
     DatabaseObject,
-    Lyrics
+    Lyrics,
+    Artwork
 )
 from ..utils.config import logging_settings
 from ..utils import string_processing, shared
@@ -476,7 +477,12 @@ class Musify(Page):
             _parse_album_anchor(album_anchor)
             
             track_name = list_points[4].text.strip()
-        
+
+        # artwork
+        artwork: Artwork = Artwork()
+        album_image_element_list: List[BeautifulSoup] = soup.find_all("img", {"class": "album-img"})
+        for album_image_element in album_image_element_list:
+            artwork.append(url=album_image_element.get("data-src", album_image_element.get("src")))
         
         # lyrics
         lyrics_container: List[BeautifulSoup] = soup.find_all("div", {"id": "tabLyrics"})
@@ -501,6 +507,7 @@ class Musify(Page):
             lyrics_list=lyrics_list,
             main_artist_list=artist_list,
             album_list=album_list,
+            artwork=artwork,
         )
 
     def _parse_song_card(self, song_card: BeautifulSoup) -> Song:

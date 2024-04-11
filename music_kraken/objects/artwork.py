@@ -33,7 +33,10 @@ class Artwork:
     def _calculate_deviation(*dimensions: List[int]) -> float:
         return sum(abs(d - main_settings["preferred_artwork_resolution"]) for d in dimensions) / len(dimensions)
 
-    def append(self, url: str, width: int, height: int, **kwargs) -> None:
+    def append(self, url: str, width: int = main_settings["preferred_artwork_resolution"], height: int = main_settings["preferred_artwork_resolution"], **kwargs) -> None:
+        if url is None:
+            return
+        
         self._variant_mapping[hash_url(url=url)] = {
             "url": url,
             "width": width,
