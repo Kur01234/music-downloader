@@ -156,10 +156,14 @@ class Song(Base):
 
     @property
     def option_string(self) -> str:
-        return f"{self.__repr__()} " \
-               f"from Album({OPTION_STRING_DELIMITER.join(album.title for album in self.album_collection)}) " \
-               f"by Artist({OPTION_STRING_DELIMITER.join(artist.name for artist in self.main_artist_collection)}) " \
-               f"feat. Artist({OPTION_STRING_DELIMITER.join(artist.name for artist in self.feature_artist_collection)})"
+        r = f"{self.__repr__()}"
+        if not self.album_collection.empty:
+            r += f" from Album({OPTION_STRING_DELIMITER.join(album.title for album in self.album_collection)})" 
+        if not self.main_artist_collection.empty:
+            r += f" by Artist({OPTION_STRING_DELIMITER.join(artist.name for artist in self.main_artist_collection)})" 
+        if not self.feature_artist_collection.empty:
+            r += f" feat. Artist({OPTION_STRING_DELIMITER.join(artist.name for artist in self.feature_artist_collection)})"
+        return r
 
     @property
     def options(self) -> List[P]:
