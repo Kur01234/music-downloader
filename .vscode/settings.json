@@ -21,6 +21,7 @@
         "dotenv",
         "levenshtein",
         "OKBLUE",
-        "Referer"
+        "Referer",
+        "tracksort"
     ]
 }

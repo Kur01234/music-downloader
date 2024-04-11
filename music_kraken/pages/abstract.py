@@ -378,8 +378,9 @@ class Page:
         if not (isinstance(music_object, Song) and self.NO_ADDITIONAL_DATA_FROM_SONG):
             self.fetch_details(music_object=music_object, stop_at_level=1)
 
-        if isinstance(music_object, Song):
-            trace(music_object.option_string)
+        if isinstance(music_object, Album):
+            music_object.update_tracksort()
+            
 
         naming_dict.add_object(music_object)
 
