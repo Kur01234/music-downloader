@@ -35,7 +35,7 @@ python3 -m pip install -r requirements-dev.txt
 python3 -m build
 
 # install the newest version
-python3 -m pip install .
+# python3 -m pip install .
 
 if [ "$test" = true ];
 then

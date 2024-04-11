@@ -63,6 +63,8 @@ def write_metadata_to_target(metadata: Metadata, target: Target, song: Song):
 
     id3_object = AudioMetadata(file_location=target.file_path)
 
+    LOGGER.info(str(metadata))
+
     if song.artwork.best_variant is not None:
         r = artwork_connection.get(
             url=song.artwork.best_variant["url"],
