@@ -11,6 +11,7 @@ from functools import lru_cache
 
 import youtube_dl
 from youtube_dl.extractor.youtube import YoutubeIE
+from youtube_dl.utils import DownloadError
 
 from ...utils.exception.config import SettingValueError
 from ...utils.config import main_settings, youtube_settings, logging_settings
@@ -201,6 +202,7 @@ class YoutubeMusic(SuperYouTube):
         self.yt_ie = MusicKrakenYoutubeIE(downloader=self.ydl, main_instance=self)
 
         self.download_values_by_url: dict = {}
+        self.not_download: Dict[str, DownloadError] = {}
 
     def _fetch_from_main_page(self):
         """
@@ -483,7 +485,13 @@ class YoutubeMusic(SuperYouTube):
 
 
     def fetch_song(self, source: Source, stop_at_level: int = 1) -> Song:
-        ydl_res: dict = self.ydl.extract_info(url=source.url, download=False)
+        ydl_res: dict = {}
+        try:
+            ydl_res: dict = self.ydl.extract_info(url=source.url, download=False)
+        except DownloadError as e:
+            self.not_download[source.hash_url] = e
+            self.LOGGER.error(f"Couldn't fetch song from {source.url}. {e}")
+            return Song()
 
         self.fetch_media_url(source=source, ydl_res=ydl_res)
 
@@ -556,17 +564,20 @@ class YoutubeMusic(SuperYouTube):
     def download_song_to_target(self, source: Source, target: Target, desc: str = None) -> DownloadResult:
         media = self.fetch_media_url(source)
 
-        result = self.download_connection.stream_into(
-            media["url"], 
-            target, 
-            name=desc, 
-            raw_url=True, 
-            raw_headers=True,
-            disable_cache=True,
-            headers=media.get("headers", {}),
-            # chunk_size=media.get("chunk_size", main_settings["chunk_size"]),
-            method="GET",
-        )
+        if source.hash_url not in self.not_download:
+            result = self.download_connection.stream_into(
+                media["url"], 
+                target, 
+                name=desc, 
+                raw_url=True, 
+                raw_headers=True,
+                disable_cache=True,
+                headers=media.get("headers", {}),
+                # chunk_size=media.get("chunk_size", main_settings["chunk_size"]),
+                method="GET",
+            )
+        else:
+            result = DownloadResult(error_message=str(self.not_download[source.hash_url]))
 
         if result.is_fatal_error:
             result.merge(super().download_song_to_target(source=source, target=target, desc=desc))
