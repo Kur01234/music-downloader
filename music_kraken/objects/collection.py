@@ -58,7 +58,7 @@ class Collection(Generic[T]):
             self._indexed_values[name].add(value)
             self._indexed_to_objects[value].append(__object)
 
-        if not from_map or True:
+        if not from_map:
             for attribute, new_object in self.contain_given_in_attribute.items():
                 __object.__getattribute__(attribute).contain_collection_inside(new_object)
 
