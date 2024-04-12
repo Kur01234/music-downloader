@@ -58,7 +58,7 @@ class Collection(Generic[T]):
             self._indexed_values[name].add(value)
             self._indexed_to_objects[value].append(__object)
 
-        if not from_map:
+        if not from_map or True:
             for attribute, new_object in self.contain_given_in_attribute.items():
                 __object.__getattribute__(attribute).contain_collection_inside(new_object)
 
@@ -110,7 +110,7 @@ class Collection(Generic[T]):
         if self._contained_in_self(__object):
             return [self]
 
-        for collection in self.children:
+        for collection in (*self.children, *self.parents):
             results.extend(collection._contained_in_sub(__object, break_at_first=break_at_first))
 
             if break_at_first:

@@ -244,6 +244,9 @@ class Album(Base):
         self.song_collection.contain_attribute_in_given = {
             "main_artist_collection": self.artist_collection
         }
+        self.song_collection.append_object_to_attribute = {
+            "album_collection": self
+        }
 
     def _add_other_db_objects(self, object_type: Type[OuterProxy], object_list: List[OuterProxy]):
         if object_type is Song:
