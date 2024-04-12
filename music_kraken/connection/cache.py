@@ -71,7 +71,8 @@ class Cache:
         for c in self.cached_attributes:
             d = c.__dict__
             for key in self._time_fields:
-                d[key] = d[key].isoformat()
+                if not isinstance(d[key], str):
+                    d[key] = d[key].isoformat()
 
             _json.append(d)
 
