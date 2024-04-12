@@ -177,6 +177,8 @@ class OuterProxy:
             _ = "debug"
             return
 
+        print(__other)
+
         self._inner.__merge__(__other._inner, override=override)
         __other._inner = self._inner
 

@@ -119,7 +119,7 @@ class Song(Base):
     def indexing_values(self) -> List[Tuple[str, object]]:
         return [
             ('id', self.id),
-            ('title', self.unified_title),
+            ('title', unify(self.unified_title)),
             ('isrc', self.isrc),
             *[('url', source.url) for source in self.source_collection]
         ]
@@ -265,7 +265,7 @@ class Album(Base):
     def indexing_values(self) -> List[Tuple[str, object]]:
         return [
             ('id', self.id),
-            ('title', self.unified_title),
+            ('title', unify(self.title)),
             ('barcode', self.barcode),
             *[('url', source.url) for source in self.source_collection]
         ]
@@ -530,7 +530,7 @@ class Artist(Base):
     def indexing_values(self) -> List[Tuple[str, object]]:
         return [
             ('id', self.id),
-            ('name', self.unified_name),
+            ('name', unify(self.name)),
             *[('url', source.url) for source in self.source_collection],
             *[('contact', contact.value) for contact in self.contact_collection]
         ]
@@ -643,7 +643,7 @@ class Label(Base):
     def indexing_values(self) -> List[Tuple[str, object]]:
         return [
             ('id', self.id),
-            ('name', self.unified_name),
+            ('name', unify(self.name)),
             *[('url', source.url) for source in self.source_collection]
         ]
 

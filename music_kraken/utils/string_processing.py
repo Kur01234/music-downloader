@@ -16,8 +16,11 @@ def unify(string: str) -> str:
     """
     returns a unified str, to make comparisons easy.
     a unified string has the following attributes:
-     - is lowercase
+    - is lowercase
     """
+
+    if string is None:
+        return None
 
     try:
         string = translit(string, reversed=True)
