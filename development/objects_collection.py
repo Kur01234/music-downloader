@@ -14,6 +14,12 @@ if __name__ == "__main__":
                             Album(title="album", albumsort=123),
                         ],
                     ),
+                    Song(
+                        title="other_song",
+                        album_list=[
+                            Album(title="album", albumsort=423),
+                        ],
+                    ),
                 ]
             ),
             Album(title="album", barcode="1234567890123"),
