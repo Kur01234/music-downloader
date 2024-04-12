@@ -26,7 +26,12 @@ if __name__ == "__main__":
         ]
     )
 
-    print(artist.main_album_collection[0].barcode)
-    print(artist.main_album_collection[0].albumsort)
+    a = artist.main_album_collection[0]
+    b = a.song_collection[0].album_collection[0]
+    c = a.song_collection[1].album_collection[0]
 
+    print(a.id, a.barcode, a.albumsort)
+    print(b.id, b.barcode, b.albumsort)
+    print(c.id, c.barcode, c.albumsort)
+    print()
     print(artist.main_album_collection._indexed_values)

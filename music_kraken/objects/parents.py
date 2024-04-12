@@ -26,6 +26,8 @@ class InnerData:
     If the data in the wrapper class has to be merged, then this class is just replaced and garbage collected.
     """
 
+    _multiple_instances = False
+
     def __init__(self, object_type, **kwargs):
         # initialize the default values
         self.__default_values = {}
@@ -177,10 +179,20 @@ class OuterProxy:
             _ = "debug"
             return
 
-        print(__other)
+        a = self
+        b = __other
 
-        self._inner.__merge__(__other._inner, override=override)
-        __other._inner = self._inner
+        if a._inner._multiple_instances and b._inner._multiple_instances:
+            LOGGER.warning(f"Both instances data obj are shared over multiple objects. This will lead so them being unsynchronized at some point. {a} {b}")
+
+        if b._inner._multiple_instances:
+            a, b = b, a
+
+        a._inner.__merge__(b._inner, override=override)
+        b._inner = a._inner
+
+
+        b._inner._multiple_instances = True
 
     def mark_as_fetched(self, *url_hash_list: List[str]):
         for url_hash in url_hash_list:
