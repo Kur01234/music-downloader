@@ -19,9 +19,13 @@
         "APIC",
         "Bandcamp",
         "dotenv",
+        "encyclopaedia",
         "levenshtein",
+        "metallum",
+        "musify",
         "OKBLUE",
         "Referer",
-        "tracksort"
+        "tracksort",
+        "youtube"
     ]
 }
