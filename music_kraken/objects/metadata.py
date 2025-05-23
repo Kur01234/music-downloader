@@ -92,7 +92,7 @@ class Mapping(Enum):
         key = attribute.value
 
         if key[0] == 'T':
-            # a text fiel
+            # a text field
             return cls.get_text_instance(key, value)
         if key[0] == "W":
             # an url field
@@ -355,7 +355,12 @@ class Metadata:
             return None
 
         list_data = self.id3_dict[field]
-
+        #correct duplications
+        correct_list_data = list()
+        for data in list_data:
+            if data not in correct_list_data:
+                correct_list_data.append(data)
+        list_data = correct_list_data
         # convert for example the time objects to timestamps
         for i, element in enumerate(list_data):
             # for performance’s sake I don't do other checks if it is already the right type
@@ -368,7 +373,7 @@ class Metadata:
             if type(element) == ID3Timestamp:
                 list_data[i] = element.timestamp
                 continue
-
+            
         """
         Version 2.4 of the specification prescribes that all text fields (the fields that start with a T, except for TXXX) can contain multiple values separated by a null character. 
         Thus if above conditions are met, I concatenate the list,
@@ -376,7 +381,7 @@ class Metadata:
         """
         if field.value[0].upper() == "T" and field.value.upper() != "TXXX":
             return self.NULL_BYTE.join(list_data)
-
+        
         return list_data[0]
 
     def get_mutagen_object(self, field):
@@ -395,6 +400,5 @@ class Metadata:
         """
         # set the tagging timestamp to the current time
         self.__setitem__(Mapping.TAGGING_TIME, [ID3Timestamp.now()])
-
         for field in self.id3_dict:
             yield self.get_mutagen_object(field)

@@ -15,6 +15,8 @@ from tqdm import tqdm
 from .cache import Cache
 from .rotating import RotatingProxy
 from ..objects import Target
+from ..utils import request_trace
+from ..utils.string_processing import shorten_display_url
 from ..utils.config import main_settings
 from ..utils.support_classes.download_result import DownloadResult
 from ..utils.hacking import merge_args
@@ -101,7 +103,7 @@ class Connection:
         }
 
         if self.HOST is not None:
-            headers["Host"] = self.HOST.netloc
+            # headers["Host"] = self.HOST.netloc
             headers["Referer"] = self.base_url(url=self.HOST)
 
         headers.update(header_values)
@@ -123,12 +125,17 @@ class Connection:
 
         return headers
 
-    def save(self, r: requests.Response, name: str, error: bool = False, **kwargs):
+    def save(self, r: requests.Response, name: str, error: bool = False, no_update_if_valid_exists: bool = False, **kwargs):
         n_kwargs = {}
         if error:
             n_kwargs["module"] = "failed_requests"
 
-        self.cache.set(r.content, name, expires_in=kwargs.get("expires_in", self.cache_expiring_duration), **n_kwargs)
+        if self.cache.get(name) is not None and no_update_if_valid_exists:
+            return
+
+        self.cache.set(r.content, name, expires_in=kwargs.get("expires_in", self.cache_expiring_duration), additional_info={
+            "encoding": r.encoding,
+        }, **n_kwargs)
 
     def request(
             self,
@@ -143,6 +150,7 @@ class Connection:
             sleep_after_404: float = None,
             is_heartbeat: bool = False,
             disable_cache: bool = None,
+            enable_cache_readonly: bool = False,
             method: str = None,
             name: str = "",
             exclude_headers: List[str] = None,
@@ -152,7 +160,7 @@ class Connection:
             raise AttributeError("method is not set.")
         method = method.upper()
         headers = dict() if headers is None else headers
-        disable_cache = headers.get("Cache-Control", "").lower() == "no-cache" if disable_cache is None else disable_cache
+        disable_cache = (headers.get("Cache-Control", "").lower() == "no-cache" if disable_cache is None else disable_cache) or kwargs.get("stream", False)
         accepted_response_codes = self.ACCEPTED_RESPONSE_CODES if accepted_response_codes is None else accepted_response_codes
         
         current_kwargs = copy.copy(locals())
@@ -160,6 +168,7 @@ class Connection:
         current_kwargs.update(**kwargs)
 
         parsed_url = urlparse(url)
+        trace_string = f"{method} {shorten_display_url(url)} \t{'[stream]' if kwargs.get('stream', False) else ''}"
         
         if not raw_headers:
             _headers = copy.copy(self.HEADER_VALUES)
@@ -175,15 +184,23 @@ class Connection:
 
         request_url = parsed_url.geturl() if not raw_url else url
 
-        if name != "" and not disable_cache:
+        if name != "" and (not disable_cache or enable_cache_readonly):
             cached = self.cache.get(name)
 
             if cached is not None:
+                request_trace(f"{trace_string}\t[cached]")
+
                 with responses.RequestsMock() as resp:
+                    additional_info = cached.attribute.additional_info
+
+                    body = cached.content
+                    if additional_info.get("encoding", None) is not None:
+                        body = body.decode(additional_info["encoding"])
+
                     resp.add(
                         method=method,
                         url=request_url,
-                        body=cached,
+                        body=body,
                     )
                     return requests.request(method=method, url=url, timeout=timeout, headers=headers, **kwargs)
 
@@ -199,6 +216,9 @@ class Connection:
             if header in headers:
                 del headers[header]
 
+        if try_count <= 0:
+            request_trace(trace_string)
+
         r = None
         connection_failed = False
         try:
@@ -208,16 +228,12 @@ class Connection:
                     pass
             
             self.lock = True
-            r: requests.Response = requests.request(method=method, url=url, timeout=timeout, headers=headers, **kwargs)
+            r: requests.Response = self.session.request(method=method, url=url, timeout=timeout, headers=headers, **kwargs)
 
             if r.status_code in accepted_response_codes:
                 if not disable_cache:
                     self.save(r, name, **kwargs)
                 return r
-
-            if self.SEMANTIC_NOT_FOUND and r.status_code == 404:
-                self.LOGGER.warning(f"Couldn't find url (404): {request_url}")
-                return None
 
         # the server rejected the request, or the internet is lacking
         except requests.exceptions.Timeout:
@@ -231,15 +247,20 @@ class Connection:
         finally:
             self.lock = False
 
-        if not connection_failed:
-            self.LOGGER.warning(f"{self.HOST.netloc} responded wit {r.status_code} at {url}. ({try_count}-{self.TRIES})")
-            if r is not None:
-                self.LOGGER.debug("request headers:\n\t"+ "\n\t".join(f"{k}\t=\t{v}" for k, v in r.request.headers.items()))
-                self.LOGGER.debug("response headers:\n\t"+ "\n\t".join(f"{k}\t=\t{v}" for k, v in r.headers.items()))
-                self.LOGGER.debug(r.content)
-                
-                if name != "":
-                    self.save(r, name, error=True, **kwargs)
+        if r is None:
+            self.LOGGER.warning(f"{parsed_url.netloc} didn't respond at {url}. ({try_count}-{self.TRIES})")
+            self.LOGGER.debug("request headers:\n\t"+ "\n\t".join(f"{k}\t=\t{v}" for k, v in headers.items()))
+        else:
+            self.LOGGER.warning(f"{parsed_url.netloc} responded wit {r.status_code} at {url}. ({try_count}-{self.TRIES})")
+            self.LOGGER.debug("request headers:\n\t"+ "\n\t".join(f"{k}\t=\t{v}" for k, v in r.request.headers.items()))
+            self.LOGGER.debug("response headers:\n\t"+ "\n\t".join(f"{k}\t=\t{v}" for k, v in r.headers.items()))
+            self.LOGGER.debug(r.content)
+            
+            if name != "":
+                self.save(r, name, error=True, **kwargs)
+
+            if self.SEMANTIC_NOT_FOUND and r.status_code == 404:
+                return None
 
             if sleep_after_404 != 0:
                 self.LOGGER.warning(f"Waiting for {sleep_after_404} seconds.")
@@ -296,7 +317,7 @@ class Connection:
             name = kwargs.pop("description")
 
         if progress > 0:
-            headers = dict() if headers is None else headers
+            headers = kwargs.get("headers", dict())
             headers["Range"] = f"bytes={target.size}-"
 
         r = self.request(
@@ -345,6 +366,7 @@ class Connection:
             if retry:
                 self.LOGGER.warning(f"Retrying stream...")
                 accepted_response_codes.add(206)
+                stream_kwargs["progress"] = progress
                 return Connection.stream_into(**stream_kwargs)
 
             return DownloadResult()

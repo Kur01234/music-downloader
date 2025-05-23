@@ -7,7 +7,7 @@ from urllib.parse import urlparse, urlencode
 from ..connection import Connection
 from ..utils.config import logging_settings
 from .abstract import Page
-from ..utils.enums.source import SourcePages
+from ..utils.enums import SourceType, ALL_SOURCE_TYPES
 from ..utils.enums.album import AlbumType
 from ..utils.support_classes.query import Query
 from ..objects import (
@@ -52,14 +52,14 @@ def _song_from_json(artist_html=None, album_html=None, release_type=None, title=
 
     return Song(
         title=title,
-        main_artist_list=[
+        artist_list=[
             _artist_from_json(artist_html=artist_html)
         ],
         album_list=[
             _album_from_json(album_html=album_html, release_type=release_type, artist_html=artist_html)
         ],
         source_list=[
-            Source(SourcePages.ENCYCLOPAEDIA_METALLUM, song_id)
+            Source(ALL_SOURCE_TYPES.ENCYCLOPAEDIA_METALLUM, song_id)
         ]
     )
 
@@ -85,7 +85,7 @@ def _artist_from_json(artist_html=None, genre=None, country=None) -> Artist:
     return Artist(
         name=artist_name,
         source_list=[
-            Source(SourcePages.ENCYCLOPAEDIA_METALLUM, artist_url)
+            Source(ALL_SOURCE_TYPES.ENCYCLOPAEDIA_METALLUM, artist_url)
         ]
     )
 
@@ -105,7 +105,7 @@ def _album_from_json(album_html=None, release_type=None, artist_html=None) -> Al
         title=album_name,
         album_type=album_type,
         source_list=[
-            Source(SourcePages.ENCYCLOPAEDIA_METALLUM, album_url)
+            Source(ALL_SOURCE_TYPES.ENCYCLOPAEDIA_METALLUM, album_url)
         ],
         artist_list=[
             _artist_from_json(artist_html=artist_html)
@@ -207,7 +207,7 @@ def create_grid(
 
 
 class EncyclopaediaMetallum(Page):
-    SOURCE_TYPE = SourcePages.ENCYCLOPAEDIA_METALLUM
+    SOURCE_TYPE = ALL_SOURCE_TYPES.ENCYCLOPAEDIA_METALLUM
     LOGGER = logging_settings["metal_archives_logger"]
     
     def __init__(self, **kwargs):
@@ -266,7 +266,7 @@ class EncyclopaediaMetallum(Page):
 
         song_title = song.title.strip()
         album_titles = ["*"] if song.album_collection.empty else [album.title.strip() for album in song.album_collection]
-        artist_titles = ["*"] if song.main_artist_collection.empty else [artist.name.strip() for artist in song.main_artist_collection]
+        artist_titles = ["*"] if song.artist_collection.empty else [artist.name.strip() for artist in song.artist_collection]
 
 
         search_results = []
@@ -486,7 +486,7 @@ class EncyclopaediaMetallum(Page):
 
                 href = anchor["href"]
                 if href is not None:
-                    source_list.append(Source.match_url(href, referer_page=self.SOURCE_TYPE))
+                    source_list.append(Source.match_url(href, referrer_page=self.SOURCE_TYPE))
 
         # The following code is only legacy code, which I just kep because it doesn't harm.
         # The way ma returns sources changed.
@@ -504,7 +504,7 @@ class EncyclopaediaMetallum(Page):
                 if url is None:
                     continue
 
-                source_list.append(Source.match_url(url, referer_page=self.SOURCE_TYPE))
+                source_list.append(Source.match_url(url, referrer_page=self.SOURCE_TYPE))
                 
         return source_list
 
@@ -663,7 +663,7 @@ class EncyclopaediaMetallum(Page):
             artist.notes = band_notes
 
         discography: List[Album] = self._fetch_artist_discography(artist_id)
-        artist.main_album_collection.extend(discography)
+        artist.album_collection.extend(discography)
 
         return artist
 
@@ -832,7 +832,7 @@ class EncyclopaediaMetallum(Page):
         )
 
     def get_source_type(self, source: Source):
-        if self.SOURCE_TYPE != source.page_enum:
+        if self.SOURCE_TYPE != source.source_type:
             return None
         
         url = source.url

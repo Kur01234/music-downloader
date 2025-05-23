@@ -15,9 +15,12 @@ __stage__ = os.getenv("STAGE", "prod")
 DEBUG = (__stage__ == "dev") and True
 DEBUG_LOGGING = DEBUG and False
 DEBUG_TRACE = DEBUG and True
+DEBUG_OBJECT_TRACE = DEBUG and False
+DEBUG_OBJECT_TRACE_CALLSTACK = DEBUG_OBJECT_TRACE and False
 DEBUG_YOUTUBE_INITIALIZING = DEBUG and False
 DEBUG_PAGES = DEBUG and False
 DEBUG_DUMP = DEBUG and True
+DEBUG_PRINT_ID = DEBUG and True
 
 if DEBUG:
     print("DEBUG ACTIVE")

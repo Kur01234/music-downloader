@@ -3,7 +3,7 @@ from .option import Options
 
 from .metadata import Metadata, Mapping as ID3Mapping, ID3Timestamp
 
-from .source import Source, SourcePages, SourceTypes
+from .source import Source, SourceType
 
 from .song import (
     Song,
@@ -24,4 +24,4 @@ from .parents import OuterProxy
 
 from .artwork import Artwork
 
-DatabaseObject = TypeVar('T', bound=OuterProxy)
+DatabaseObject = OuterProxy

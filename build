@@ -45,4 +45,4 @@ then
     exit
 fi
 
-twine upload dist/music_kraken*
+twine upload dist/music_kraken* 

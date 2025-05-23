@@ -78,7 +78,14 @@ def _merge(
         drop_args = []
     if drop_kwonlyargs is None:
         drop_kwonlyargs = []
-    source_spec = inspect.getfullargspec(source)
+
+    is_builtin = False
+    try:
+        source_spec = inspect.getfullargspec(source)
+    except TypeError:
+        is_builtin = True
+        source_spec = inspect.FullArgSpec(type(source).__name__, [], [], [], [], [], [])
+
     dest_spec = inspect.getfullargspec(dest)
 
     if source_spec.varargs or source_spec.varkw:
@@ -128,12 +135,14 @@ def _merge(
             'co_kwonlyargcount': len(kwonlyargs_merged),
             'co_posonlyargcount': dest.__code__.co_posonlyargcount,
             'co_nlocals': len(args_all),
-            'co_flags': source.__code__.co_flags,
             'co_varnames': args_all,
             'co_filename': dest.__code__.co_filename,
             'co_name': dest.__code__.co_name,
             'co_firstlineno': dest.__code__.co_firstlineno,
         }
+
+        if hasattr(source, "__code__"):
+            replace_kwargs['co_flags'] = source.__code__.co_flags
 
         if PY310:
             replace_kwargs['co_linetable'] = dest.__code__.co_linetable
@@ -151,7 +160,7 @@ def _merge(
             len(kwonlyargs_merged),
             _blank.__code__.co_nlocals,
             _blank.__code__.co_stacksize,
-            source.__code__.co_flags,
+            source.__code__.co_flags if hasattr(source, "__code__") else dest.__code__.co_flags,
             _blank.__code__.co_code, (), (),
             args_all, dest.__code__.co_filename,
             dest.__code__.co_name,
@@ -171,6 +180,9 @@ def _merge(
         dest_ret = dest.__annotations__['return']
 
     for v in ('__kwdefaults__', '__annotations__'):
+        if not hasattr(source, v):
+            continue
+
         out = getattr(source, v)
         if out is None:
             out = {}

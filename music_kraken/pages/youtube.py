@@ -2,15 +2,13 @@ from typing import List, Optional, Type, Tuple
 from urllib.parse import urlparse, urlunparse, parse_qs
 from enum import Enum
 
-import sponsorblock
-from sponsorblock.errors import HTTPException, NotFoundException
+import python_sponsorblock
 
 from ..objects import Source, DatabaseObject, Song, Target
 from .abstract import Page
 from ..objects import (
     Artist,
     Source,
-    SourcePages,
     Song,
     Album,
     Label,
@@ -20,6 +18,7 @@ from ..objects import (
 )
 from ..connection import Connection
 from ..utils.string_processing import clean_song_title
+from ..utils.enums import SourceType, ALL_SOURCE_TYPES
 from ..utils.support_classes.download_result import DownloadResult
 from ..utils.config import youtube_settings, main_settings, logging_settings
 
@@ -40,10 +39,7 @@ def get_piped_url(path: str = "", params: str = "", query: str = "", fragment: s
 
 class YouTube(SuperYouTube):
     # CHANGE
-    SOURCE_TYPE = SourcePages.YOUTUBE
-    LOGGER = logging_settings["youtube_logger"]
-
-    NO_ADDITIONAL_DATA_FROM_SONG = True
+    SOURCE_TYPE = ALL_SOURCE_TYPES.YOUTUBE
 
     def __init__(self, *args, **kwargs):
         self.connection: Connection = Connection(
@@ -63,8 +59,9 @@ class YouTube(SuperYouTube):
         )
         
         # the stuff with the connection is, to ensure sponsorblock uses the proxies, my programm does
-        _sponsorblock_connection: Connection = Connection(host="https://sponsor.ajay.app/")
-        self.sponsorblock_client = sponsorblock.Client(session=_sponsorblock_connection.session)
+        _sponsorblock_connection: Connection = Connection()
+        self.sponsorblock = python_sponsorblock.SponsorBlock(silent=True, session=_sponsorblock_connection.session)
+
 
         super().__init__(*args, **kwargs)
 
@@ -146,7 +143,7 @@ class YouTube(SuperYouTube):
                 self.SOURCE_TYPE, get_invidious_url(path="/watch", query=f"v={data['videoId']}")
             )],
             notes=FormattedText(html=data["descriptionHtml"] + f"\n<p>{license_str}</ p>" ),
-            main_artist_list=artist_list
+            artist_list=artist_list
         ), int(data["published"])
 
     def fetch_song(self, source: Source, stop_at_level: int = 1) -> Song:
@@ -287,7 +284,7 @@ class YouTube(SuperYouTube):
             self.LOGGER.warning(f"didn't found any playlists with piped, falling back to invidious. (it is unusual)")
             album_list, artist_name = self.fetch_invidious_album_list(parsed.id)
         
-        return Artist(name=artist_name, main_album_list=album_list, source_list=[source])
+        return Artist(name=artist_name, album_list=album_list, source_list=[source])
 
     def download_song_to_target(self, source: Source, target: Target, desc: str = None) -> DownloadResult:
         """
@@ -344,10 +341,10 @@ class YouTube(SuperYouTube):
         
         segments = []
         try:
-            segments = self.sponsorblock_client.get_skip_segments(parsed.id)
+            segments = self.sponsorblock.get_segments(parsed.id)
         except NotFoundException:
             self.LOGGER.debug(f"No sponsor found for the video {parsed.id}.")
         except HTTPException as e:
             self.LOGGER.warning(f"{e}")
 
-        return [(segment.start, segment.end) for segment in segments]
+        return [(segment.segment[0], segment.segment[1]) for segment in segments]

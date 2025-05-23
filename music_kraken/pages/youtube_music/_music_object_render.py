@@ -2,12 +2,14 @@ from typing import List, Optional
 from enum import Enum
 
 from ...utils.config import youtube_settings, logging_settings
+from ...utils.string_processing import clean_song_title
+from ...utils.enums import SourceType, ALL_SOURCE_TYPES
+
 from ...objects import Source, DatabaseObject
 from ..abstract import Page
 from ...objects import (
     Artist,
     Source,
-    SourcePages,
     Song,
     Album,
     Label,
@@ -17,7 +19,7 @@ from ...objects import (
 LOGGER = logging_settings["youtube_music_logger"]
 
 
-SOURCE_PAGE = SourcePages.YOUTUBE_MUSIC
+SOURCE_PAGE = ALL_SOURCE_TYPES.YOUTUBE
 
 
 class PageType(Enum):
@@ -39,7 +41,7 @@ def parse_run_element(run_element: dict) -> Optional[DatabaseObject]:
     _temp_nav = run_element.get("navigationEndpoint", {})
     is_video = "watchEndpoint" in _temp_nav
 
-    navigation_endpoint = _temp_nav.get("watchEndpoint" if is_video else "browseEndpoint", {})
+    navigation_endpoint = _temp_nav.get("watchEndpoint", _temp_nav.get("browseEndpoint", {}))
     
     element_type = PageType.SONG
     page_type_string = navigation_endpoint.get("watchEndpointMusicSupportedConfigs", {}).get("watchEndpointMusicConfig", {}).get("musicVideoType", "")
@@ -50,7 +52,7 @@ def parse_run_element(run_element: dict) -> Optional[DatabaseObject]:
     except ValueError:
         return
     
-    element_id = navigation_endpoint.get("videoId" if is_video else "browseId")
+    element_id = navigation_endpoint.get("videoId", navigation_endpoint.get("browseId"))
     element_text =  run_element.get("text")
 
     if element_id is None or element_text is None:
@@ -59,7 +61,11 @@ def parse_run_element(run_element: dict) -> Optional[DatabaseObject]:
     
     if element_type == PageType.SONG or (element_type == PageType.VIDEO and not youtube_settings["youtube_music_clean_data"]) or (element_type == PageType.OFFICIAL_MUSIC_VIDEO and not youtube_settings["youtube_music_clean_data"]):
         source = Source(SOURCE_PAGE, f"https://music.youtube.com/watch?v={element_id}")
-        return Song(title=element_text, source_list=[source])
+    
+        return Song(
+            title=clean_song_title(element_text), 
+            source_list=[source]
+        )
 
     if element_type == PageType.ARTIST or (element_type == PageType.CHANNEL and not youtube_settings["youtube_music_clean_data"]):
         source = Source(SOURCE_PAGE, f"https://music.youtube.com/channel/{element_id}")

@@ -3,13 +3,16 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 from functools import lru_cache
-
 from typing import Optional, Dict, Tuple, List, Type, Generic, Any, TypeVar, Set
 
+from pathlib import Path
+import inspect
+
+from .source import SourceCollection
 from .metadata import Metadata
-from ..utils import get_unix_time
+from ..utils import get_unix_time, object_trace, generate_id
 from ..utils.config import logging_settings, main_settings
-from ..utils.shared import HIGHEST_ID
+from ..utils.shared import HIGHEST_ID, DEBUG_PRINT_ID
 from ..utils.hacking import MetaClass
 
 LOGGER = logging_settings["object_logger"]
@@ -26,37 +29,70 @@ class InnerData:
     If the data in the wrapper class has to be merged, then this class is just replaced and garbage collected.
     """
 
+    _refers_to_instances: set = None
+    _is_in_collection: set = None
+
+    _has_data: bool = False
+    """
+    Attribute versions keep track, of if the attribute has been changed.
+    """
+
     def __init__(self, object_type, **kwargs):
+        self._refers_to_instances = set()
+        self._is_in_collection = set()
+
+        self._fetched_from: dict = {}
+
         # initialize the default values
-        self.__default_values = {}
+        self._default_values = {}
         for name, factory in object_type._default_factories.items():
-            self.__default_values[name] = factory()
+            self._default_values[name] = factory()
 
         for key, value in kwargs.items():
+            if hasattr(value, "__is_collection__"):
+                value._collection_for[self] = key
+            
             self.__setattr__(key, value)
 
-    def __merge__(self, __other: InnerData, override: bool = False):
+            if self._has_data:
+                continue
+    
+    def __setattr__(self, key: str, value):
+        if self._has_data or not hasattr(self, "_default_values"):
+            return super().__setattr__(key, value)
+        
+        super().__setattr__("_has_data", not (key in self._default_values and self._default_values[key] == value))
+        return super().__setattr__(key, value)
+
+    def __hash__(self):
+        return self.id
+
+    def __merge__(self, __other: InnerData, **kwargs):
         """
         :param __other:
-        :param override:
         :return:
         """
 
+        self._fetched_from.update(__other._fetched_from)
+        self._is_in_collection.update(__other._is_in_collection)
+
         for key, value in __other.__dict__.copy().items():
+            if key.startswith("_"):
+                continue
+
+            if hasattr(value, "__is_collection__") and key in self.__dict__:
+                self.__getattribute__(key).__merge__(value, **kwargs)
+                continue
+
             # just set the other value if self doesn't already have it
-            if key not in self.__dict__ or (key in self.__dict__ and self.__dict__[key] == self.__default_values.get(key)):
+            if key not in self.__dict__ or (key in self.__dict__ and self.__dict__[key] == self._default_values.get(key)):
                 self.__setattr__(key, value)
                 continue
 
             # if the object of value implemented __merge__, it merges
             existing = self.__getattribute__(key)
-            if hasattr(type(existing), "__merge__"):
-                existing.__merge__(value, override)
-                continue
-
-            # override the existing value if requested
-            if override:
-                self.__setattr__(key, value)
+            if hasattr(existing, "__merge__"):
+                existing.__merge__(value, **kwargs)
 
 
 class OuterProxy:
@@ -64,23 +100,23 @@ class OuterProxy:
     Wraps the inner data, and provides apis, to naturally access those values.
     """
 
-    _default_factories: dict = {}
+    source_collection: SourceCollection
+
+    _default_factories: dict = {"source_collection": SourceCollection}
     _outer_attribute: Set[str] = {"options", "metadata", "indexing_values", "option_string"}
 
     DOWNWARDS_COLLECTION_STRING_ATTRIBUTES = tuple()
     UPWARDS_COLLECTION_STRING_ATTRIBUTES = tuple()
 
-    TITEL = "id"
-
     def __init__(self, _id: int = None, dynamic: bool = False, **kwargs):
         _automatic_id: bool = False
 
-        if _id is None and not dynamic:
+        if _id is None:
             """
             generates a random integer id
             the range is defined in the config
             """
-            _id = random.randint(0, HIGHEST_ID)
+            _id = generate_id()
             _automatic_id = True
 
         kwargs["automatic_id"] = _automatic_id
@@ -99,8 +135,11 @@ class OuterProxy:
 
                 del kwargs[name]
 
-        self._fetched_from: dict = {}
         self._inner: InnerData = InnerData(type(self), **kwargs)
+        self._inner._refers_to_instances.add(self)
+
+        object_trace(f"creating {type(self).__name__} [{self.option_string}]")
+
         self.__init_collections__()
 
         for name, data_list in collection_data.items():
@@ -151,44 +190,59 @@ class OuterProxy:
             self._add_other_db_objects(key, value)
 
     def __hash__(self):
-        """
-        :raise: IsDynamicException
-        :return:
-        """
-
-        if self.dynamic:
-            return id(self._inner)
-
-        return self.id
+        return id(self)
 
     def __eq__(self, other: Any):
         return self.__hash__() == other.__hash__()
 
-    def merge(self, __other: Optional[OuterProxy], override: bool = False):
+    def merge(self, __other: Optional[OuterProxy], **kwargs):
         """
         1. merges the data of __other in self
         2. replaces the data of __other with the data of self
 
         :param __other:
-        :param override:
         :return:
         """
         if __other is None:
-            _ = "debug"
             return
 
-        self._inner.__merge__(__other._inner, override=override)
-        __other._inner = self._inner
+        a_id = self.id
+
+        a = self
+        b = __other
+
+        if a.id == b.id:
+            return
+        
+        # switch instances if more efficient
+        if len(b._inner._refers_to_instances) > len(a._inner._refers_to_instances):
+            a, b = b, a
+
+        object_trace(f"merging {a.option_string} | {b.option_string}")
+
+        old_inner = b._inner
+
+        for instance in b._inner._refers_to_instances.copy():
+            instance._inner = a._inner
+            a._inner._refers_to_instances.add(instance)
+
+        a._inner.__merge__(old_inner, **kwargs)
+        del old_inner
+
+        self.id = a_id
+
+    def __merge__(self, __other: Optional[OuterProxy], **kwargs):
+        self.merge(__other, **kwargs)
 
     def mark_as_fetched(self, *url_hash_list: List[str]):
         for url_hash in url_hash_list:
-            self._fetched_from[url_hash] = {
+            self._inner._fetched_from[url_hash] = {
                 "time": get_unix_time(),
                 "url": url_hash,
             }
 
     def already_fetched_from(self, url_hash: str) -> bool:
-        res = self._fetched_from.get(url_hash, None)
+        res = self._inner._fetched_from.get(url_hash, None)
 
         if res is None:
             return False
@@ -205,7 +259,23 @@ class OuterProxy:
 
     @property
     def options(self) -> List[P]:
-        return [self]
+        r = []
+
+        for collection_string_attribute in self.UPWARDS_COLLECTION_STRING_ATTRIBUTES:
+            r.extend(self.__getattribute__(collection_string_attribute))
+
+        r.append(self)
+
+        for collection_string_attribute in self.DOWNWARDS_COLLECTION_STRING_ATTRIBUTES:
+            r.extend(self.__getattribute__(collection_string_attribute))
+
+        return r
+
+    @property
+    def option_string(self) -> str:
+        return self.title_string
+
+    INDEX_DEPENDS_ON: List[str] = []
 
     @property
     def indexing_values(self) -> List[Tuple[str, object]]:
@@ -237,9 +307,49 @@ class OuterProxy:
 
         return r
 
-    def __repr__(self):
-        return f"{type(self).__name__}({', '.join(key + ': ' + str(val) for key, val in self.indexing_values)})"
+    @property
+    def root_collections(self) -> List[Collection]:
+        if len(self.UPWARDS_COLLECTION_STRING_ATTRIBUTES) == 0:
+            return [self]
 
+        r = []
+        for collection_string_attribute in self.UPWARDS_COLLECTION_STRING_ATTRIBUTES:
+            r.extend(self.__getattribute__(collection_string_attribute))
+
+        return r
+
+    def _compile(self, **kwargs):
+        pass
+
+    def compile(self, from_root=False, **kwargs):
+        # compile from the root
+        if not from_root:
+            for c in self.root_collections:
+                c.compile(from_root=True, **kwargs)
+            return
+
+        self._compile(**kwargs)
+
+        for c_attribute in self.DOWNWARDS_COLLECTION_STRING_ATTRIBUTES:
+            for c in self.__getattribute__(c_attribute):
+                c.compile(from_root=True, **kwargs)
+
+    TITEL = "id"
     @property
     def title_string(self) -> str:
+        return str(self.__getattribute__(self.TITEL)) + (f" {self.id}" if DEBUG_PRINT_ID else "")
+
+    @property
+    def title_value(self) -> str:
         return str(self.__getattribute__(self.TITEL))
+
+    def __repr__(self):
+        return f"{type(self).__name__}({self.title_string})"
+
+    def get_child_collections(self):
+        for collection_string_attribute in self.DOWNWARDS_COLLECTION_STRING_ATTRIBUTES:
+            yield self.__getattribute__(collection_string_attribute)
+
+    def get_parent_collections(self):
+        for collection_string_attribute in self.UPWARDS_COLLECTION_STRING_ATTRIBUTES:
+            yield self.__getattribute__(collection_string_attribute)

@@ -6,8 +6,10 @@ logging.getLogger().setLevel(logging.DEBUG)
 
 if __name__ == "__main__":
     commands = [
-        "s: #a Toxoplasma",
-        "d: 16",
+        "s: #a Crystal F",
+        "10",
+        "1",
+        "3",
     ]
 
     

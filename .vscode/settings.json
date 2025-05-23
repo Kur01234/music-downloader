@@ -16,12 +16,32 @@
     },
     "python.formatting.provider": "none",
     "cSpell.words": [
+        "albumsort",
         "APIC",
         "Bandcamp",
+        "bitrate",
+        "DEEZER",
         "dotenv",
+        "encyclopaedia",
+        "ENDC",
+        "Gitea",
+        "iframe",
+        "isrc",
+        "itemprop",
         "levenshtein",
+        "metallum",
+        "MUSICBRAINZ",
+        "musify",
         "OKBLUE",
+        "OKGREEN",
+        "pathvalidate",
         "Referer",
-        "tracksort"
+        "sponsorblock",
+        "tracklist",
+        "tracksort",
+        "translit",
+        "unmap",
+        "youtube",
+        "youtubei"
     ]
 }

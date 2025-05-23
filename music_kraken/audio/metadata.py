@@ -1,5 +1,5 @@
 import mutagen
-from mutagen.id3 import ID3, Frame, APIC
+from mutagen.id3 import ID3, Frame, APIC, USLT
 from pathlib import Path
 from typing import List
 import logging
@@ -7,6 +7,7 @@ from PIL import Image
 
 from ..utils.config import logging_settings, main_settings
 from ..objects import Song, Target, Metadata
+from ..objects.metadata import Mapping
 from ..connection import Connection
 
 LOGGER = logging_settings["tagging_logger"]
@@ -29,6 +30,8 @@ class AudioMetadata:
             """
             https://www.programcreek.com/python/example/84797/mutagen.id3.ID3
             """
+            if value is None:
+                continue
             self.frames.add(value)
 
     def add_song_metadata(self, song: Song):
@@ -66,16 +69,18 @@ def write_metadata_to_target(metadata: Metadata, target: Target, song: Song):
     LOGGER.info(str(metadata))
 
     if song.artwork.best_variant is not None:
+        best_variant = song.artwork.best_variant
+
         r = artwork_connection.get(
-            url=song.artwork.best_variant["url"],
-            disable_cache=False,
+            url=best_variant["url"],
+            name=song.artwork.get_variant_name(best_variant),
         )
 
         temp_target: Target = Target.temp()
         with temp_target.open("wb") as f:
             f.write(r.content)
 
-        converted_target: Target = Target.temp(name=f"{song.title}.jpeg")
+        converted_target: Target = Target.temp(name=f"{song.title.replace('/', '_')}")
         with Image.open(temp_target.file_path) as img:
             # crop the image if it isn't square in the middle with minimum data loss
             width, height = img.size
@@ -87,6 +92,10 @@ def write_metadata_to_target(metadata: Metadata, target: Target, song: Song):
 
             # resize the image to the preferred resolution
             img.thumbnail((main_settings["preferred_artwork_resolution"], main_settings["preferred_artwork_resolution"]))
+
+            # https://stackoverflow.com/a/59476938/16804841
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
 
             img.save(converted_target.file_path, "JPEG")
 
@@ -101,8 +110,11 @@ def write_metadata_to_target(metadata: Metadata, target: Target, song: Song):
                 data=converted_target.read_bytes(),
             )
         )
-
-        mutagen_file = mutagen.File(target.file_path)
+        id3_object.frames.delall("USLT")
+        uslt_val = metadata.get_id3_value(Mapping.UNSYNCED_LYRICS)
+        id3_object.frames.add(
+            USLT(encoding=3, lang=u'eng', desc=u'desc', text=uslt_val)
+        )
 
     id3_object.add_metadata(metadata)
     id3_object.save()

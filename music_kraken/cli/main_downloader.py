@@ -6,14 +6,18 @@ import re
 from .utils import cli_function
 from .options.first_config import initial_config
 
+from ..utils import output, BColors
 from ..utils.config import write_config, main_settings
 from ..utils.shared import URL_PATTERN
 from ..utils.string_processing import fit_to_file_system
 from ..utils.support_classes.query import Query
 from ..utils.support_classes.download_result import DownloadResult
+from ..utils.exception import MKInvalidInputException
 from ..utils.exception.download import UrlNotFoundException
 from ..utils.enums.colors import BColors
-from ..download.results import Results, Option, PageResults
+from .. import console
+
+from ..download.results import Results, Option, PageResults, GoToResults
 from ..download.page_attributes import Pages
 from ..pages import Page
 from ..objects import Song, Album, Artist, DatabaseObject
@@ -162,9 +166,9 @@ class Downloader:
         self.genre = genre or get_genre()
         self.process_metadata_anyway = process_metadata_anyway
 
-        print()
-        print(f"Downloading to: \"{self.genre}\"")
-        print()
+        output()
+        output(f"Downloading to: \"{self.genre}\"", color=BColors.HEADER)
+        output()
 
     def print_current_options(self):
         self.page_dict = dict()
@@ -172,14 +176,14 @@ class Downloader:
         print()
 
         page_count = 0
-        for option in self.current_results.formated_generator(max_items_per_page=self.max_displayed_options):
+        for option in self.current_results.formatted_generator():
             if isinstance(option, Option):
-                color = BColors.BOLD.value if self.pages.is_downloadable(option.music_object) else BColors.GREY.value
-                print(f"{color}{option.index:0{self.option_digits}} {option.music_object.option_string}{BColors.ENDC.value}")
+                r = f"{BColors.GREY.value}{option.index:0{self.option_digits}}{BColors.ENDC.value} {option.music_object.option_string}"
+                print(r)
             else:
                 prefix = ALPHABET[page_count % len(ALPHABET)]
                 print(
-                    f"{BColors.HEADER.value}({prefix}) ------------------------{option.__name__:{PAGE_NAME_FILL}<{MAX_PAGE_LEN}}------------{BColors.ENDC.value}")
+                    f"{BColors.HEADER.value}({prefix}) --------------------------------{option.__name__:{PAGE_NAME_FILL}<{MAX_PAGE_LEN}}--------------------{BColors.ENDC.value}")
 
                 self.page_dict[prefix] = option
                 self.page_dict[option.__name__] = option
@@ -211,6 +215,9 @@ class Downloader:
         return True
 
     def _process_parsed(self, key_text: Dict[str, str], query: str) -> Query:
+        # strip all the values in key_text
+        key_text = {key: value.strip() for key, value in key_text.items()}
+
         song = None if not "t" in key_text else Song(title=key_text["t"], dynamic=True)
         album = None if not "r" in key_text else Album(title=key_text["r"], dynamic=True)
         artist = None if not "a" in key_text else Artist(name=key_text["a"], dynamic=True)
@@ -219,7 +226,7 @@ class Downloader:
             if album is not None:
                 song.album_collection.append(album)
             if artist is not None:
-                song.main_artist_collection.append(artist)
+                song.artist_collection.append(artist)
             return Query(raw_query=query, music_object=song)
 
         if album is not None:
@@ -242,7 +249,7 @@ class Downloader:
                       f"Recommendations and suggestions on sites to implement appreciated.\n"
                       f"But don't be a bitch if I don't end up implementing it.")
                 return
-            self.set_current_options(PageResults(page, data_object.options))
+            self.set_current_options(PageResults(page, data_object.options, max_items_per_page=self.max_displayed_options))
             self.print_current_options()
             return
 
@@ -292,95 +299,128 @@ class Downloader:
         self.set_current_options(self.pages.search(parsed_query))
         self.print_current_options()
 
-    def goto(self, index: int):
+    def goto(self, data_object: DatabaseObject):
         page: Type[Page]
-        music_object: DatabaseObject
 
-        try:
-            page, music_object = self.current_results.get_music_object_by_index(index)
-        except KeyError:
-            print()
-            print(f"The option {index} doesn't exist.")
-            print()
-            return
+        self.pages.fetch_details(data_object, stop_at_level=1)
 
-        self.pages.fetch_details(music_object)
-
-        print(music_object)
-        print(music_object.options)
-        self.set_current_options(PageResults(page, music_object.options))
+        self.set_current_options(GoToResults(data_object.options, max_items_per_page=self.max_displayed_options))
 
         self.print_current_options()
 
-    def download(self, download_str: str, download_all: bool = False) -> bool:
-        to_download: List[DatabaseObject] = []
-
-        if re.match(URL_PATTERN, download_str) is not None:
-            _, music_objects = self.pages.fetch_url(download_str)
-            to_download.append(music_objects)
-
-        else:
-            index: str
-            for index in download_str.split(", "):
-                if not index.strip().isdigit():
-                    print()
-                    print(f"Every download thingie has to be an index, not {index}.")
-                    print()
-                    return False
-
-            for index in download_str.split(", "):
-                to_download.append(self.current_results.get_music_object_by_index(int(index))[1])
-
-        print()
-        print("Downloading:")
-        for download_object in to_download:
-            print(download_object.option_string)
-        print()
+    def download(self, data_objects: List[DatabaseObject], **kwargs) -> bool:
+        output()
+        if len(data_objects) > 1:
+            output(f"Downloading  {len(data_objects)} objects...", *("- " + o.option_string for o in data_objects), color=BColors.BOLD, sep="\n")
 
         _result_map: Dict[DatabaseObject, DownloadResult] = dict()
 
-        for database_object in to_download:
-            r = self.pages.download(music_object=database_object, genre=self.genre, download_all=download_all,
-                                    process_metadata_anyway=self.process_metadata_anyway)
+        for database_object in data_objects:
+            r = self.pages.download(
+                data_object=database_object, 
+                genre=self.genre, 
+                **kwargs
+            )
             _result_map[database_object] = r
 
         for music_object, result in _result_map.items():
-            print()
-            print(music_object.option_string)
-            print(result)
+            output()
+            output(music_object.option_string)
+            output(result)
 
         return True
 
     def process_input(self, input_str: str) -> bool:
-        input_str = input_str.strip()
-        processed_input: str = input_str.lower()
+        try:
+            input_str = input_str.strip()
+            processed_input: str = input_str.lower()
 
-        if processed_input in EXIT_COMMANDS:
-            return True
+            if processed_input in EXIT_COMMANDS:
+                return True
 
-        if processed_input == ".":
-            self.print_current_options()
-            return False
-
-        if processed_input == "..":
-            if self.previous_option():
+            if processed_input == ".":
                 self.print_current_options()
+                return False
+
+            if processed_input == "..":
+                if self.previous_option():
+                    self.print_current_options()
+                return False
+
+            command = ""
+            query = processed_input
+            if ":" in processed_input:
+                _ = processed_input.split(":")
+                command, query = _[0], ":".join(_[1:])
+
+            do_search = "s" in command
+            do_fetch = "f" in command
+            do_download = "d" in command
+            do_merge = "m" in command
+
+            if do_search and (do_download or do_fetch or do_merge):
+                raise MKInvalidInputException(message="You can't search and do another operation at the same time.")
+
+            if do_search:
+                self.search(":".join(input_str.split(":")[1:]))
+                return False
+
+            def get_selected_objects(q: str):
+                if q.strip().lower() == "all":
+                    return list(self.current_results)
+
+                indices = []
+                for possible_index in q.split(","):
+                    possible_index = possible_index.strip()
+                    if possible_index == "":
+                        continue
+                    
+                    i = 0
+                    try:
+                        i = int(possible_index)
+                    except ValueError:
+                        raise MKInvalidInputException(message=f"The index \"{possible_index}\" is not a number.")
+
+                    if i < 0 or i >= len(self.current_results):
+                        raise MKInvalidInputException(message=f"The index \"{i}\" is not within the bounds of 0-{len(self.current_results) - 1}.")
+                    
+                    indices.append(i)
+
+                return [self.current_results[i] for i in indices]
+
+            selected_objects = get_selected_objects(query)
+
+            if do_merge:
+                old_selected_objects = selected_objects
+
+                a = old_selected_objects[0]
+                for b in old_selected_objects[1:]:
+                    if type(a) != type(b):
+                        raise MKInvalidInputException(message="You can't merge different types of objects.")
+                    a.merge(b)
+
+                selected_objects = [a]
+
+            if do_fetch:
+                for data_object in selected_objects:
+                    self.pages.fetch_details(data_object)
+
+                self.print_current_options()
+                return False
+
+            if do_download:
+                self.download(selected_objects)
+                return False
+
+            if len(selected_objects) != 1:
+                raise MKInvalidInputException(message="You can only go to one object at a time without merging.")
+
+            self.goto(selected_objects[0])
             return False
+        except MKInvalidInputException as e:
+            output("\n" + e.message + "\n", color=BColors.FAIL)
+            help_message()
 
-        if processed_input.startswith("s: "):
-            self.search(input_str[3:])
-            return False
-
-        if processed_input.startswith("d: "):
-            return self.download(input_str[3:])
-
-        if processed_input.isdigit():
-            self.goto(int(processed_input))
-            return False
-
-        if processed_input != "help":
-            print(f"{BColors.WARNING.value}Invalid input.{BColors.ENDC.value}")
-        help_message()
         return False
 
     def mainloop(self):

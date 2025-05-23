@@ -7,7 +7,6 @@ from ..abstract import Page
 from ...objects import (
     Artist,
     Source,
-    SourcePages,
     Song,
     Album,
     Label,
@@ -24,7 +23,6 @@ def music_card_shelf_renderer(renderer: dict) -> List[DatabaseObject]:
     for sub_renderer in renderer.get("contents", []):
         results.extend(parse_renderer(sub_renderer))
     return results
-
 
 def music_responsive_list_item_flex_column_renderer(renderer: dict) -> List[DatabaseObject]:
     return parse_run_list(renderer.get("text", {}).get("runs", []))
@@ -54,19 +52,24 @@ def music_responsive_list_item_renderer(renderer: dict) -> List[DatabaseObject]:
     for result in results:
         _map[type(result)].append(result)
 
-    for song in song_list:
+    if len(song_list) == 1:
+        song = song_list[0]
+        song.feature_artist_collection.extend(artist_list)
         song.album_collection.extend(album_list)
-        song.main_artist_collection.extend(artist_list)
+        return [song]
 
-    for album in album_list:
+    if len(album_list) == 1:
+        album = album_list[0]
         album.artist_collection.extend(artist_list)
+        album.song_collection.extend(song_list)
+        return [album]
 
-    if len(song_list) > 0:
-        return song_list
-    if len(album_list) > 0:
-        return album_list
-    if len(artist_list) > 0:
-        return artist_list
+    """
+    if len(artist_list) == 1:
+        artist = artist_list[0]
+        artist.main_album_collection.extend(album_list)
+        return [artist]
+    """
 
     return results
 

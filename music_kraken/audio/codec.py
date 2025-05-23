@@ -10,12 +10,12 @@ from ..objects import Target
 LOGGER = logging_settings["codex_logger"]
 
 
-def correct_codec(target: Target, bitrate_kb: int = main_settings["bitrate"], audio_format: str = main_settings["audio_format"], interval_list: List[Tuple[float, float]] = None):
+def correct_codec(target: Target, bitrate_kb: int = main_settings["bitrate"], audio_format: str = main_settings["audio_format"], skip_intervals: List[Tuple[float, float]] = None):
     if not target.exists:
         LOGGER.warning(f"Target doesn't exist: {target.file_path}")
         return
     
-    interval_list = interval_list or []
+    skip_intervals = skip_intervals or []
 
     bitrate_b = int(bitrate_kb / 1024)
 
@@ -29,7 +29,7 @@ def correct_codec(target: Target, bitrate_kb: int = main_settings["bitrate"], au
     
     start = 0
     next_start = 0
-    for end, next_start in interval_list:
+    for end, next_start in skip_intervals:
         aselect_list.append(f"between(t,{start},{end})")
         start = next_start
     aselect_list.append(f"gte(t,{next_start})")
@@ -47,7 +47,7 @@ def correct_codec(target: Target, bitrate_kb: int = main_settings["bitrate"], au
 
     # run the ffmpeg command with a progressbar
     ff = FfmpegProgress(ffmpeg_command)
-    with tqdm(total=100, desc=f"removing {len(interval_list)} segments") as pbar:
+    with tqdm(total=100, desc=f"processing") as pbar:
         for progress in ff.run_command_with_progress():
             pbar.update(progress-pbar.n)
 

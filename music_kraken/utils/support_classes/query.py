@@ -24,7 +24,7 @@ class Query:
             return [self.music_object.name]
         
         if isinstance(self.music_object, Song):
-            return [f"{artist.name} - {self.music_object}" for artist in self.music_object.main_artist_collection]
+            return [f"{artist.name} - {self.music_object}" for artist in self.music_object.artist_collection]
         
         if isinstance(self.music_object, Album):
             return [f"{artist.name} - {self.music_object}" for artist in self.music_object.artist_collection]

@@ -1,12 +1,14 @@
 import json
 from pathlib import Path
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import List, Optional
 from functools import lru_cache
 import logging
 
+from ..utils import output, BColors
 from ..utils.config import main_settings
+from ..utils.string_processing import fit_to_file_system
 
 
 @dataclass
@@ -16,6 +18,8 @@ class CacheAttribute:
 
     created: datetime
     expires: datetime
+
+    additional_info: dict = field(default_factory=dict)
 
     @property
     def id(self):
@@ -29,6 +33,12 @@ class CacheAttribute:
 
     def __eq__(self, other):
         return self.__dict__ == other.__dict__
+
+
+@dataclass
+class CacheResult:
+    content: bytes
+    attribute: CacheAttribute
 
 
 class Cache:
@@ -48,13 +58,16 @@ class Cache:
 
         self._time_fields = {"created", "expires"}
         with self.index.open("r") as i:
-            for c in json.loads(i.read()):
-                for key in self._time_fields:
-                    c[key] = datetime.fromisoformat(c[key])
+            try:
+                for c in json.loads(i.read()):
+                    for key in self._time_fields:
+                        c[key] = datetime.fromisoformat(c[key])
 
-                ca = CacheAttribute(**c)
-                self.cached_attributes.append(ca)
-                self._id_to_attribute[ca.id] = ca
+                    ca = CacheAttribute(**c)
+                    self.cached_attributes.append(ca)
+                    self._id_to_attribute[ca.id] = ca
+            except json.JSONDecodeError:
+                pass
 
     @lru_cache()
     def _init_module(self, module: str) -> Path:
@@ -63,7 +76,7 @@ class Cache:
         :return: the module path
         """
         r = Path(self._dir, module)
-        r.mkdir(exist_ok=True)
+        r.mkdir(exist_ok=True, parents=True)
         return r
 
     def _write_index(self, indent: int = 4):
@@ -99,7 +112,7 @@ class Cache:
 
         return True
 
-    def set(self, content: bytes, name: str, expires_in: float = 10, module: str = ""):
+    def set(self, content: bytes, name: str, expires_in: float = 10, module: str = "", additional_info: dict = None):
         """
         :param content:
         :param module:
@@ -110,6 +123,7 @@ class Cache:
         if name == "":
             return
 
+        additional_info = additional_info or {}
         module = self.module if module == "" else module
 
         module_path = self._init_module(module)
@@ -119,27 +133,31 @@ class Cache:
             name=name,
             created=datetime.now(),
             expires=datetime.now() + timedelta(days=expires_in),
+            additional_info=additional_info,
         )
         self._write_attribute(cache_attribute)
 
-        cache_path = Path(module_path, name)
+        cache_path = fit_to_file_system(Path(module_path, name.replace("/", "_")), hidden_ok=True)
         with cache_path.open("wb") as content_file:
             self.logger.debug(f"writing cache to {cache_path}")
             content_file.write(content)
 
-    def get(self, name: str) -> Optional[bytes]:
-        path = Path(self._dir, self.module, name)
+    def get(self, name: str) -> Optional[CacheResult]:
+        path = fit_to_file_system(Path(self._dir, self.module, name.replace("/", "_")), hidden_ok=True)
 
         if not path.is_file():
             return None
 
         # check if it is outdated
+        if f"{self.module}_{name}" not in self._id_to_attribute:
+            path.unlink()
+            return
         existing_attribute: CacheAttribute = self._id_to_attribute[f"{self.module}_{name}"]
         if not existing_attribute.is_valid:
             return
 
         with path.open("rb") as f:
-            return f.read()
+            return CacheResult(content=f.read(), attribute=existing_attribute)
 
     def clean(self):
         keep = set()
@@ -148,7 +166,7 @@ class Cache:
             if ca.name == "":
                 continue
 
-            file = Path(self._dir, ca.module, ca.name)
+            file = fit_to_file_system(Path(self._dir, ca.module, ca.name.replace("/", "_")), hidden_ok=True)
 
             if not ca.is_valid:
                 self.logger.debug(f"deleting cache {ca.id}")
@@ -187,9 +205,12 @@ class Cache:
         for path in self._dir.iterdir():
             if path.is_dir():
                 for file in path.iterdir():
+                    output(f"Deleting file {file}", color=BColors.GREY)
                     file.unlink()
+                output(f"Deleting folder {path}", color=BColors.HEADER)
                 path.rmdir()
             else:
+                output(f"Deleting folder {path}", color=BColors.HEADER)
                 path.unlink()
 
         self.cached_attributes.clear()

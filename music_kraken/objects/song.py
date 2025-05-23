@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from collections import defaultdict
 from typing import List, Optional, Dict, Tuple, Type, Union
+import copy
 
 import pycountry
 
@@ -22,19 +23,63 @@ from .parents import OuterProxy, P
 from .source import Source, SourceCollection
 from .target import Target
 from .country import Language, Country
+from ..utils.shared import DEBUG_PRINT_ID
 from ..utils.string_processing import unify
 
 from .parents import OuterProxy as Base
 
 from ..utils.config import main_settings
+from ..utils.enums.colors import BColors
 
 """
 All Objects dependent 
 """
 
 CountryTyping = type(list(pycountry.countries)[0])
-OPTION_STRING_DELIMITER = " | "
 
+OPTION_BACKGROUND = BColors.GREY
+OPTION_FOREGROUND = BColors.OKBLUE
+
+def get_collection_string(
+    collection: Collection[Base], 
+    template: str, 
+    ignore_titles: Set[str] = None,
+    background: BColors = OPTION_BACKGROUND, 
+    foreground: BColors = OPTION_FOREGROUND,
+    add_id: bool = DEBUG_PRINT_ID,
+) -> str:
+    if collection.empty:
+        return ""
+
+    foreground = foreground.value
+    background = background.value
+
+    ignore_titles = ignore_titles or set()
+
+    r = background
+
+    def get_element_str(element) -> str:
+        nonlocal add_id
+        r = element.title_string.strip()
+        if add_id and False:
+            r += " " + str(element.id)
+        return r
+
+    element: Base
+    titel_list: List[str] = [get_element_str(element) for element in collection if element.title_string not in ignore_titles]
+
+    for i, titel in enumerate(titel_list):
+        delimiter = ", "
+        if i == len(collection) - 1:
+            delimiter = ""
+        elif i == len(collection) - 2:
+            delimiter = " and "
+
+        r += foreground + titel + BColors.ENDC.value + background + delimiter + BColors.ENDC.value
+
+    r += BColors.ENDC.value
+
+    return template.format(r)
 
 class Song(Base):
     title: str
@@ -49,7 +94,8 @@ class Song(Base):
     source_collection: SourceCollection
     target_collection: Collection[Target]
     lyrics_collection: Collection[Lyrics]
-    main_artist_collection: Collection[Artist]
+
+    artist_collection: Collection[Artist]
     feature_artist_collection: Collection[Artist]
     album_collection: Collection[Album]
 
@@ -61,11 +107,11 @@ class Song(Base):
         "lyrics_collection": Collection,
         "artwork": Artwork,
 
-        "main_artist_collection": Collection,
         "album_collection": Collection,
+        "artist_collection": Collection,
         "feature_artist_collection": Collection,
 
-        "title": lambda: "",
+        "title": lambda: None,
         "unified_title": lambda: None,
         "isrc": lambda: None,
         "genre": lambda: None,
@@ -73,30 +119,47 @@ class Song(Base):
         "tracksort": lambda: 0,
     }
 
-    def __init__(self, title: str = "", unified_title: str = None, isrc: str = None, length: int = None,
-                 genre: str = None, note: FormattedText = None, source_list: List[Source] = None,
-                 target_list: List[Target] = None, lyrics_list: List[Lyrics] = None,
-                 main_artist_list: List[Artist] = None, feature_artist_list: List[Artist] = None,
-                 album_list: List[Album] = None, tracksort: int = 0, artwork: Optional[Artwork] = None, **kwargs) -> None:
+    def __init__(
+        self, 
+        title: str = None, 
+        isrc: str = None, 
+        length: int = None,
+        genre: str = None, 
+        note: FormattedText = None, 
+        source_list: List[Source] = None,
+        target_list: List[Target] = None, 
+        lyrics_list: List[Lyrics] = None,
+        artist_list: List[Artist] = None, 
+        feature_artist_list: List[Artist] = None,
+        album_list: List[Album] = None, 
+        tracksort: int = 0, 
+        artwork: Optional[Artwork] = None, 
+        **kwargs
+    ) -> None:
+        real_kwargs = copy.copy(locals())
+        real_kwargs.update(real_kwargs.pop("kwargs", {}))
 
-        Base.__init__(**locals())
+        Base.__init__(**real_kwargs)
 
-    UPWARDS_COLLECTION_STRING_ATTRIBUTES = ("album_collection", "main_artist_collection", "feature_artist_collection")
+    UPWARDS_COLLECTION_STRING_ATTRIBUTES = ("artist_collection", "feature_artist_collection", "album_collection")
     TITEL = "title"
 
     def __init_collections__(self) -> None:
-        self.album_collection.contain_given_in_attribute = {
-            "artist_collection": self.main_artist_collection,
+        self.feature_artist_collection.push_to = [self.artist_collection]
+        self.artist_collection.pull_from = [self.feature_artist_collection]
+
+        self.album_collection.sync_on_append = {
+            "artist_collection": self.artist_collection,
         }
+
         self.album_collection.append_object_to_attribute = {
             "song_collection": self,
         }
-
-        self.main_artist_collection.contain_given_in_attribute = {
-            "main_album_collection": self.album_collection
+        self.artist_collection.extend_object_to_attribute = {
+            "album_collection": self.album_collection
         }
-        self.feature_artist_collection.append_object_to_attribute = {
-            "feature_song_collection": self
+        self.feature_artist_collection.extend_object_to_attribute = {
+            "album_collection": self.album_collection
         }
 
     def _add_other_db_objects(self, object_type: Type[OuterProxy], object_list: List[OuterProxy]):
@@ -108,20 +171,21 @@ class Song(Base):
             return
 
         if isinstance(object_list, Artist):
-            self.main_artist_collection.extend(object_list)
+            self.feature_artist_collection.extend(object_list)
             return
 
         if isinstance(object_list, Album):
             self.album_collection.extend(object_list)
             return
 
+    INDEX_DEPENDS_ON = ("title", "isrc", "source_collection")
+
     @property
     def indexing_values(self) -> List[Tuple[str, object]]:
         return [
-            ('id', self.id),
-            ('title', self.unified_title),
+            ('title', unify(self.title)),
             ('isrc', self.isrc),
-            *[('url', source.url) for source in self.source_collection]
+            *self.source_collection.indexing_values(),
         ]
 
     @property
@@ -133,45 +197,34 @@ class Song(Base):
             id3Mapping.GENRE: [self.genre],
             id3Mapping.TRACKNUMBER: [self.tracksort_str],
             id3Mapping.COMMENT: [self.note.markdown],
+            id3Mapping.FILE_WEBPAGE_URL: self.source_collection.url_list,
+            id3Mapping.SOURCE_WEBPAGE_URL: self.source_collection.homepage_list,
         })
 
         # metadata.merge_many([s.get_song_metadata() for s in self.source_collection])  album sources have no relevant metadata for id3
         metadata.merge_many([a.metadata for a in self.album_collection])
-        metadata.merge_many([a.metadata for a in self.main_artist_collection])
+        metadata.merge_many([a.metadata for a in self.artist_collection])
         metadata.merge_many([a.metadata for a in self.feature_artist_collection])
         metadata.merge_many([lyrics.metadata for lyrics in self.lyrics_collection])
 
         return metadata
 
     def get_artist_credits(self) -> str:
-        main_artists = ", ".join([artist.name for artist in self.main_artist_collection])
+        main_artists = ", ".join([artist.name for artist in self.artist_collection])
         feature_artists = ", ".join([artist.name for artist in self.feature_artist_collection])
 
         if len(feature_artists) == 0:
             return main_artists
         return f"{main_artists} feat. {feature_artists}"
 
-    def __repr__(self) -> str:
-        return f"Song(\"{self.title}\")"
-
     @property
     def option_string(self) -> str:
-        r = f"{self.__repr__()}"
-        if not self.album_collection.empty:
-            r += f" from Album({OPTION_STRING_DELIMITER.join(album.title for album in self.album_collection)})" 
-        if not self.main_artist_collection.empty:
-            r += f" by Artist({OPTION_STRING_DELIMITER.join(artist.name for artist in self.main_artist_collection)})" 
-        if not self.feature_artist_collection.empty:
-            r += f" feat. Artist({OPTION_STRING_DELIMITER.join(artist.name for artist in self.feature_artist_collection)})"
+        r = "song "
+        r += OPTION_FOREGROUND.value + self.title_string + BColors.ENDC.value + OPTION_BACKGROUND.value
+        r += get_collection_string(self.album_collection, " from {}", ignore_titles={self.title})
+        r += get_collection_string(self.artist_collection, " by {}")
+        r += get_collection_string(self.feature_artist_collection, " feat. {}" if len(self.artist_collection) > 0 else " by {}")
         return r
-
-    @property
-    def options(self) -> List[P]:
-        options = self.main_artist_collection.shallow_list
-        options.extend(self.feature_artist_collection)
-        options.extend(self.album_collection)
-        options.append(self)
-        return options
 
     @property
     def tracksort_str(self) -> str:
@@ -183,11 +236,6 @@ class Song(Base):
             return f"{self.tracksort}"
 
         return f"{self.tracksort}/{len(self.album_collection[0].song_collection) or 1}"
-
-
-"""
-All objects dependent on Album
-"""
 
 
 class Album(Base):
@@ -202,8 +250,10 @@ class Album(Base):
     notes: FormattedText
 
     source_collection: SourceCollection
-    artist_collection: Collection[Artist]
+
     song_collection: Collection[Song]
+    artist_collection: Collection[Artist]
+    feature_artist_collection: Collection[Artist]
     label_collection: Collection[Label]
 
     _default_factories = {
@@ -219,30 +269,57 @@ class Album(Base):
         "notes": FormattedText,
 
         "source_collection": SourceCollection,
-        "artist_collection": Collection,
+
         "song_collection": Collection,
+        "artist_collection": Collection,
+        "feature_artist_collection": Collection,
         "label_collection": Collection,
     }
 
     TITEL = "title"
 
     # This is automatically generated
-    def __init__(self, title: str = None, unified_title: str = None, album_status: AlbumStatus = None,
-                 album_type: AlbumType = None, language: Language = None, date: ID3Timestamp = None,
-                 barcode: str = None, albumsort: int = None, notes: FormattedText = None,
-                 source_list: List[Source] = None, artist_list: List[Artist] = None, song_list: List[Song] = None,
-                 label_list: List[Label] = None, **kwargs) -> None:
-        super().__init__(title=title, unified_title=unified_title, album_status=album_status, album_type=album_type,
-                         language=language, date=date, barcode=barcode, albumsort=albumsort, notes=notes,
-                         source_list=source_list, artist_list=artist_list, song_list=song_list, label_list=label_list,
-                         **kwargs)
+    def __init__(
+        self, 
+        title: str = None, 
+        unified_title: str = None, 
+        album_status: AlbumStatus = None,
+        album_type: AlbumType = None, 
+        language: Language = None, 
+        date: ID3Timestamp = None,
+        barcode: str = None, 
+        albumsort: int = None, 
+        notes: FormattedText = None,
+        source_list: List[Source] = None, 
+        artist_list: List[Artist] = None, 
+        song_list: List[Song] = None,
+        label_list: List[Label] = None, 
+        **kwargs
+    ) -> None:
+        real_kwargs = copy.copy(locals())
+        real_kwargs.update(real_kwargs.pop("kwargs", {}))
+
+        Base.__init__(**real_kwargs)
 
     DOWNWARDS_COLLECTION_STRING_ATTRIBUTES = ("song_collection",)
-    UPWARDS_COLLECTION_STRING_ATTRIBUTES = ("artist_collection", "label_collection")
+    UPWARDS_COLLECTION_STRING_ATTRIBUTES = ("label_collection", "artist_collection")
 
     def __init_collections__(self):
-        self.song_collection.contain_attribute_in_given = {
-            "main_artist_collection": self.artist_collection
+        self.feature_artist_collection.push_to = [self.artist_collection]
+        self.artist_collection.pull_from = [self.feature_artist_collection]
+
+        self.song_collection.append_object_to_attribute = {
+            "album_collection": self
+        }
+        self.song_collection.sync_on_append = {
+            "artist_collection": self.artist_collection
+        }
+
+        self.artist_collection.append_object_to_attribute = {
+            "album_collection": self
+        }
+        self.artist_collection.extend_object_to_attribute = {
+            "label_collection": self.label_collection
         }
 
     def _add_other_db_objects(self, object_type: Type[OuterProxy], object_list: List[OuterProxy]):
@@ -261,13 +338,14 @@ class Album(Base):
             self.label_collection.extend(object_list)
             return
 
+    INDEX_DEPENDS_ON = ("title", "barcode", "source_collection")
+
     @property
     def indexing_values(self) -> List[Tuple[str, object]]:
         return [
-            ('id', self.id),
-            ('title', self.unified_title),
+            ('title', unify(self.title)),
             ('barcode', self.barcode),
-            *[('url', source.url) for source in self.source_collection]
+            *self.source_collection.indexing_values(),
         ]
 
     @property
@@ -290,20 +368,38 @@ class Album(Base):
             id3Mapping.ALBUMSORTORDER: [str(self.albumsort)] if self.albumsort is not None else []
         })
 
-    def __repr__(self):
-        return f"Album(\"{self.title}\")"
-
     @property
     def option_string(self) -> str:
-        return f"{self.__repr__()} " \
-               f"by Artist({OPTION_STRING_DELIMITER.join([artist.name for artist in self.artist_collection])}) " \
-               f"under Label({OPTION_STRING_DELIMITER.join([label.name for label in self.label_collection])})"
+        r = "album "
+        r += OPTION_FOREGROUND.value + self.title_string + BColors.ENDC.value + OPTION_BACKGROUND.value
+        r += get_collection_string(self.artist_collection, " by {}")
+        if len(self.artist_collection) <= 0:
+            r += get_collection_string(self.feature_artist_collection, " by {}")
+        r += get_collection_string(self.label_collection, " under {}")
 
-    @property
-    def options(self) -> List[P]:
-        options = [*self.artist_collection, self, *self.song_collection]
+        if len(self.song_collection) > 0:
+            r += f" with {len(self.song_collection)} songs"
+        return r
 
-        return options
+    def _compile(self):
+        self.analyze_implied_album_type()
+        self.update_tracksort()
+        self.fix_artist_collection()
+
+    def analyze_implied_album_type(self):
+        # if the song collection has only one song, it is reasonable to assume that it is a single
+        if len(self.song_collection) == 1:
+            self.album_type = AlbumType.SINGLE
+            return
+
+        # if the album already has an album type, we don't need to do anything
+        if self.album_type is not AlbumType.OTHER:
+            return
+
+        # for information on EP's I looked at https://www.reddit.com/r/WeAreTheMusicMakers/comments/a354ql/whats_the_cutoff_length_between_ep_and_album/
+        if len(self.song_collection) < 9:
+            self.album_type = AlbumType.EP
+            return
 
     def update_tracksort(self):
         """
@@ -330,18 +426,15 @@ class Album(Base):
                 tracksort_map[i] = existing_list.pop(0)
                 tracksort_map[i].tracksort = i
 
-
-    def compile(self, merge_into: bool = False):
+    def fix_artist_collection(self):
         """
-        compiles the recursive structures,
-        and does depending on the object some other stuff.
-
-        no need to override if only the recursive structure should be built.
-        override self.build_recursive_structures() instead
+        I add artists, that could only be feature artists to the feature artist collection.
+        They get automatically moved to main artist collection, if a matching artist exists in the main artist collection or is appended to it later on.
+        If I am not sure for any artist, I try to analyze the most common artist in the song collection of one album.
         """
 
-        self.update_tracksort()
-        self._build_recursive_structures(build_version=random.randint(0, 99999), merge=merge_into)
+        # move all artists that are in all feature_artist_collections, of every song, to the artist_collection
+        pass
 
     @property
     def copyright(self) -> str:
@@ -374,34 +467,26 @@ class Album(Base):
         return self.album_type.value
 
 
-"""
-All objects dependent on Artist
-"""
-
-
 class Artist(Base):
     name: str
-    unified_name: str
     country: Country
     formed_in: ID3Timestamp
     notes: FormattedText
     lyrical_themes: List[str]
 
     general_genre: str
-    unformated_location: str
+    unformatted_location: str
 
     source_collection: SourceCollection
     contact_collection: Collection[Contact]
 
-    feature_song_collection: Collection[Song]
-    main_album_collection: Collection[Album]
+    album_collection: Collection[Album]
     label_collection: Collection[Label]
 
     _default_factories = {
-        "name": str,
-        "unified_name": lambda: None,
+        "name": lambda: None,
         "country": lambda: None,
-        "unformated_location": lambda: None,
+        "unformatted_location": lambda: None,
 
         "formed_in": ID3Timestamp,
         "notes": FormattedText,
@@ -409,8 +494,7 @@ class Artist(Base):
         "general_genre": lambda: "",
 
         "source_collection": SourceCollection,
-        "feature_song_collection": Collection,
-        "main_album_collection": Collection,
+        "album_collection": Collection,
         "contact_collection": Collection,
         "label_collection": Collection,
     }
@@ -418,28 +502,35 @@ class Artist(Base):
     TITEL = "name"
 
     # This is automatically generated
-    def __init__(self, name: str = "", unified_name: str = None, country: Country = None,
-                 formed_in: ID3Timestamp = None, notes: FormattedText = None, lyrical_themes: List[str] = None,
-                 general_genre: str = None, unformated_location: str = None, source_list: List[Source] = None,
-                 contact_list: List[Contact] = None, feature_song_list: List[Song] = None,
-                 main_album_list: List[Album] = None, label_list: List[Label] = None, **kwargs) -> None:
+    def __init__(
+        self, 
+        name: str = None, 
+        unified_name: str = None, 
+        country: Country = None,
+        formed_in: ID3Timestamp = None, 
+        notes: FormattedText = None, 
+        lyrical_themes: List[str] = None,
+        general_genre: str = None, 
+        unformatted_location: str = None, 
+        source_list: List[Source] = None,
+        contact_list: List[Contact] = None, 
+        feature_song_list: List[Song] = None,
+        album_list: List[Album] = None, 
+        label_list: List[Label] = None, 
+        **kwargs
+    ) -> None:
+        real_kwargs = copy.copy(locals())
+        real_kwargs.update(real_kwargs.pop("kwargs", {}))
 
-        super().__init__(name=name, unified_name=unified_name, country=country, formed_in=formed_in, notes=notes,
-                         lyrical_themes=lyrical_themes, general_genre=general_genre,
-                         unformated_location=unformated_location, source_list=source_list, contact_list=contact_list,
-                         feature_song_list=feature_song_list, main_album_list=main_album_list, label_list=label_list,
-                         **kwargs)
+        Base.__init__(**real_kwargs)
 
-    DOWNWARDS_COLLECTION_STRING_ATTRIBUTES = ("feature_song_collection", "main_album_collection")
+
+    DOWNWARDS_COLLECTION_STRING_ATTRIBUTES = ("album_collection",)
     UPWARDS_COLLECTION_STRING_ATTRIBUTES = ("label_collection",)
 
     def __init_collections__(self):
-        self.feature_song_collection.append_object_to_attribute = {
+        self.album_collection.append_object_to_attribute = {
             "feature_artist_collection": self
-        }
-
-        self.main_album_collection.append_object_to_attribute = {
-            "artist_collection": self
         }
 
         self.label_collection.append_object_to_attribute = {
@@ -449,39 +540,32 @@ class Artist(Base):
     def _add_other_db_objects(self, object_type: Type[OuterProxy], object_list: List[OuterProxy]):
         if object_type is Song:
             # this doesn't really make sense
-            # self.feature_song_collection.extend(object_list)
             return
 
         if object_type is Artist:
             return
 
         if object_type is Album:
-            self.main_album_collection.extend(object_list)
+            self.album_collection.extend(object_list)
             return
 
         if object_type is Label:
             self.label_collection.extend(object_list)
             return
 
-    @property
-    def options(self) -> List[P]:
-        options = [self, *self.main_album_collection.shallow_list, *self.feature_album]
-        print(options)
-        return options
+    def _compile(self):
+        self.update_albumsort()
 
     def update_albumsort(self):
         """
         This updates the albumsort attributes, of the albums in
-        `self.main_album_collection`, and sorts the albums, if possible.
+        `self.album_collection`, and sorts the albums, if possible.
 
         It is advised to only call this function, once all the albums are
         added to the artist.
 
         :return:
         """
-        if len(self.main_album_collection) <= 0:
-            return
-
         type_section: Dict[AlbumType, int] = defaultdict(lambda: 2, {
             AlbumType.OTHER: 0,  # if I don't know it, I add it to the first section
             AlbumType.STUDIO_ALBUM: 0,
@@ -493,7 +577,7 @@ class Artist(Base):
 
         # order albums in the previously defined section
         album: Album
-        for album in self.main_album_collection:
+        for album in self.album_collection:
             sections[type_section[album.album_type]].append(album)
 
         def sort_section(_section: List[Album], last_albumsort: int) -> int:
@@ -524,85 +608,39 @@ class Artist(Base):
             album_list.extend(sections[section_index])
 
         # replace the old collection with the new one
-        self.main_album_collection: Collection = Collection(data=album_list, element_type=Album)
+        self.album_collection._data = album_list
 
+    INDEX_DEPENDS_ON = ("name", "source_collection", "contact_collection")
     @property
     def indexing_values(self) -> List[Tuple[str, object]]:
         return [
-            ('id', self.id),
-            ('name', self.unified_name),
-            *[('url', source.url) for source in self.source_collection],
-            *[('contact', contact.value) for contact in self.contact_collection]
+            ('name', unify(self.name)),
+            *[('contact', contact.value) for contact in self.contact_collection],
+            *self.source_collection.indexing_values(),
         ]
 
     @property
     def metadata(self) -> Metadata:
         metadata = Metadata({
-            id3Mapping.ARTIST: [self.name]
+            id3Mapping.ARTIST: [self.name],
+            id3Mapping.ARTIST_WEBPAGE_URL: self.source_collection.url_list,
         })
-        metadata.merge_many([s.get_artist_metadata() for s in self.source_collection])
 
         return metadata
 
-    """
-    def __str__(self, include_notes: bool = False):
-        string = self.name or ""
-        if include_notes:
-            plaintext_notes = self.notes.get_plaintext()
-            if plaintext_notes is not None:
-                string += "\n" + plaintext_notes
-        return string
-    """
-
-    def __repr__(self):
-        return f"Artist(\"{self.name}\")"
-
     @property
     def option_string(self) -> str:
-        return f"{self.__repr__()} " \
-               f"under Label({OPTION_STRING_DELIMITER.join([label.name for label in self.label_collection])})"
+        r = "artist "
+        r += OPTION_FOREGROUND.value + self.title_string + BColors.ENDC.value + OPTION_BACKGROUND.value
+        r += get_collection_string(self.label_collection, " under {}")
+        
+        r += OPTION_BACKGROUND.value
+        if len(self.album_collection) > 0:
+            r += f" with {len(self.album_collection)} albums"
+        
+        r += BColors.ENDC.value
 
-    @property
-    def options(self) -> List[P]:
-        options = [self]
-        options.extend(self.main_album_collection)
-        options.extend(self.feature_song_collection)
-        return options
-
-    @property
-    def feature_album(self) -> Album:
-        return Album(
-            title="features",
-            album_status=AlbumStatus.UNRELEASED,
-            album_type=AlbumType.COMPILATION_ALBUM,
-            is_split=True,
-            albumsort=666,
-            dynamic=True,
-            song_list=self.feature_song_collection.shallow_list
-        )
-
-    def get_all_songs(self) -> List[Song]:
-        """
-        returns a list of all Songs.
-        probably not that useful, because it is unsorted
-        """
-        collection = self.feature_song_collection.copy()
-        for album in self.discography:
-            collection.extend(album.song_collection)
-
-        return collection
-
-    @property
-    def discography(self) -> List[Album]:
-        flat_copy_discography = self.main_album_collection.copy()
-        flat_copy_discography.append(self.feature_album)
-
-        return flat_copy_discography
-
-
-"""
-Label
-"""
+        return r
 
 
 class Label(Base):
@@ -632,18 +670,35 @@ class Label(Base):
 
     TITEL = "name"
 
-    def __init__(self, name: str = None, unified_name: str = None, notes: FormattedText = None,
-                 source_list: List[Source] = None, contact_list: List[Contact] = None,
-                 album_list: List[Album] = None, current_artist_list: List[Artist] = None, **kwargs) -> None:
-        super().__init__(name=name, unified_name=unified_name, notes=notes, source_list=source_list,
-                         contact_list=contact_list, album_list=album_list, current_artist_list=current_artist_list,
-                         **kwargs)
+    def __init__(
+        self, 
+        name: str = None, 
+        unified_name: str = None, 
+        notes: FormattedText = None,
+        source_list: List[Source] = None, 
+        contact_list: List[Contact] = None,
+        album_list: List[Album] = None, 
+        current_artist_list: List[Artist] = None, 
+        **kwargs
+    ) -> None:
+        real_kwargs = copy.copy(locals())
+        real_kwargs.update(real_kwargs.pop("kwargs", {}))
+
+        Base.__init__(**real_kwargs)
+
+    def __init_collections__(self):
+        self.album_collection.append_object_to_attribute = {
+            "label_collection": self
+        }
+
+        self.current_artist_collection.append_object_to_attribute = {
+            "label_collection": self
+        }
 
     @property
     def indexing_values(self) -> List[Tuple[str, object]]:
         return [
-            ('id', self.id),
-            ('name', self.unified_name),
+            ('name', unify(self.name)),
             *[('url', source.url) for source in self.source_collection]
         ]
 
@@ -669,4 +724,4 @@ class Label(Base):
 
     @property
     def option_string(self):
-        return self.__repr__()
+        return "label " + OPTION_FOREGROUND.value + self.name + BColors.ENDC.value

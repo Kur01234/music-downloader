@@ -50,10 +50,15 @@ class Artwork:
             return None
         return min(self._variant_mapping.values(), key=lambda x: x["deviation"])
 
-    def __merge__(self, other: Artwork, override: bool = False) -> None:
+    def get_variant_name(self, variant: ArtworkVariant) -> str:
+        return f"artwork_{variant['width']}x{variant['height']}_{hash_url(variant['url']).replace('/', '_')}"
+
+    def __merge__(self, other: Artwork, **kwargs) -> None:
         for key, value in other._variant_mapping.items():
-            if key not in self._variant_mapping or override:
+            if key not in self._variant_mapping:
                 self._variant_mapping[key] = value
 
     def __eq__(self, other: Artwork) -> bool:
+        if not isinstance(other, Artwork):
+            return False
         return any(a == b for a, b in zip(self._variant_mapping.keys(), other._variant_mapping.keys()))

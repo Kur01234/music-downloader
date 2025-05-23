@@ -1,0 +1,56 @@
+labels:
+  platform: linux/amd64
+
+clone:
+  git:
+    image: woodpeckerci/plugin-git
+    settings:
+      tags: true
+
+steps:    
+  build-stable:
+    image: python
+    commands:
+      - python -m pip install -r requirements-dev.txt
+      - python3 -m build
+    environment:
+      - SETUPTOOLS_SCM_PRETEND_VERSION=${CI_COMMIT_TAG}
+    when:
+      - event: tag
+
+  build-dev:
+    image: python
+    commands:
+      - python -m pip install -r requirements-dev.txt
+      - python3 -m build
+    when:
+      - event: manual
+      - event: push
+        branch: experimental
+
+  publish-gitea:
+    image: gitea.elara.ws/music-kraken/plugin-twine
+    settings:
+      repository_url: "https://gitea.elara.ws/api/packages/music-kraken/pypi"
+      username:
+        from_secret: gitea_username
+      password:
+        from_secret: gitea_password
+    when:
+      - event: manual
+      - event: tag
+      - event: push
+        branch: experimental
+
+  publish-pypi:
+    image: gitea.elara.ws/music-kraken/plugin-twine
+    settings:
+      username:
+        from_secret: pypi_username
+      password:
+        from_secret: pypi_password
+    when:
+      - event: manual
+      - event: tag
+      - event: push
+        branch: experimental

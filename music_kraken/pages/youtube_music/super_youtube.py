@@ -3,15 +3,13 @@ from urllib.parse import urlparse, urlunparse, parse_qs
 from enum import Enum
 import requests
 
-import sponsorblock
-from sponsorblock.errors import HTTPException, NotFoundException
+import python_sponsorblock
 
 from ...objects import Source, DatabaseObject, Song, Target
 from ..abstract import Page
 from ...objects import (
     Artist,
     Source,
-    SourcePages,
     Song,
     Album,
     Label,
@@ -22,6 +20,7 @@ from ...objects import (
 from ...connection import Connection
 from ...utils.support_classes.download_result import DownloadResult
 from ...utils.config import youtube_settings, logging_settings, main_settings
+from ...utils.enums import SourceType, ALL_SOURCE_TYPES
 
 
 def get_invidious_url(path: str = "", params: str = "", query: str = "", fragment: str = "") -> str:
@@ -51,7 +50,7 @@ class YouTubeUrl:
     """
     
     def __init__(self, url: str) -> None:
-        self.SOURCE_TYPE = SourcePages.YOUTUBE
+        self.SOURCE_TYPE = ALL_SOURCE_TYPES.YOUTUBE
 
         """
         Raises Index exception for wrong url, and value error for not found enum type
@@ -59,9 +58,6 @@ class YouTubeUrl:
         self.id = ""
         parsed = urlparse(url=url)
 
-        if parsed.netloc == "music.youtube.com":
-            self.SOURCE_TYPE = SourcePages.YOUTUBE_MUSIC
-        
         self.url_type: YouTubeUrlType
         
         type_frag_list = parsed.path.split("/")
@@ -125,8 +121,7 @@ class YouTubeUrl:
 
 class SuperYouTube(Page):
     # CHANGE
-    SOURCE_TYPE = SourcePages.YOUTUBE
-    LOGGER = logging_settings["youtube_logger"]
+    SOURCE_TYPE = ALL_SOURCE_TYPES.YOUTUBE
 
     NO_ADDITIONAL_DATA_FROM_SONG = False
 
@@ -143,9 +138,10 @@ class SuperYouTube(Page):
         )
         
         # the stuff with the connection is, to ensure sponsorblock uses the proxies, my programm does
-        _sponsorblock_connection: Connection = Connection(host="https://sponsor.ajay.app/")
-        self.sponsorblock_client = sponsorblock.Client(session=_sponsorblock_connection.session)
+        _sponsorblock_connection: Connection = Connection()
+        self.sponsorblock = python_sponsorblock.SponsorBlock(silent=True, session=_sponsorblock_connection.session)
 
+        super().__init__(*args, **kwargs)
 
     def get_source_type(self, source: Source) -> Optional[Type[DatabaseObject]]:
         _url_type = {
@@ -213,10 +209,10 @@ class SuperYouTube(Page):
         
         segments = []
         try:
-            segments = self.sponsorblock_client.get_skip_segments(parsed.id)
+            segments = self.sponsorblock.get_segments(parsed.id)
         except NotFoundException:
             self.LOGGER.debug(f"No sponsor found for the video {parsed.id}.")
         except HTTPException as e:
             self.LOGGER.warning(f"{e}")
 
-        return [(segment.start, segment.end) for segment in segments]
+        return [(segment.segment[0], segment.segment[1]) for segment in segments]

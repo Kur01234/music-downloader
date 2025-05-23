@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Tuple, TextIO, Union
+from typing import List, Tuple, TextIO, Union, Optional
 import logging
 import random
 import requests
@@ -31,7 +31,10 @@ class Target(OuterProxy):
     }
 
     @classmethod
-    def temp(cls, name: str = str(random.randint(0, HIGHEST_ID))) -> P:
+    def temp(cls, name: str = str(random.randint(0, HIGHEST_ID)), file_extension: Optional[str] = None) -> P:
+        if file_extension is not None:
+            name = f"{name}.{file_extension}"
+
         return cls(main_settings["temp_directory"] / name)
 
     # This is automatically generated

@@ -2,7 +2,6 @@ from typing import Tuple, Type, Dict, List, Generator, Union
 from dataclasses import dataclass
 
 from ..objects import DatabaseObject
-from ..utils.enums.source import SourcePages
 from ..pages import Page, EncyclopaediaMetallum, Musify
 
 
@@ -13,31 +12,35 @@ class Option:
 
 
 class Results:
-    def __init__(self) -> None:
+    def __init__(self, max_items_per_page: int = 10, **kwargs) -> None:
         self._by_index: Dict[int, DatabaseObject] = dict()
         self._page_by_index: Dict[int: Type[Page]] = dict()
+
+        self.max_items_per_page = max_items_per_page
         
     def __iter__(self) -> Generator[DatabaseObject, None, None]:
-        for option in self.formated_generator():
+        for option in self.formatted_generator():
             if isinstance(option, Option):
                 yield option.music_object
     
-    def formated_generator(self, max_items_per_page: int = 10) -> Generator[Union[Type[Page], Option], None, None]:
+    def formatted_generator(self) -> Generator[Union[Type[Page], Option], None, None]:
         self._by_index = dict()
         self._page_by_index = dict()
-    
-    def get_music_object_by_index(self, index: int) -> Tuple[Type[Page], DatabaseObject]:
-        # if this throws a key error, either the formatted generator needs to be iterated, or the option doesn't exist.
-        return self._page_by_index[index], self._by_index[index]
+
+    def __len__(self) -> int:
+        return max(self._by_index.keys())
+
+    def __getitem__(self, index: int): 
+        return self._by_index[index]
 
 
 class SearchResults(Results):
     def __init__(
         self,
-        pages: Tuple[Type[Page], ...] = None
-        
+        pages: Tuple[Type[Page], ...] = None,
+        **kwargs,
     ) -> None:
-        super().__init__()
+        super().__init__(**kwargs)
         
         self.pages = pages or []
         # this would initialize a list for every page, which I don't think I want
@@ -54,9 +57,12 @@ class SearchResults(Results):
 
     def get_page_results(self, page: Type[Page]) -> "PageResults":
         return PageResults(page, self.results.get(page, []))
+
+    def __len__(self) -> int:
+        return sum(min(self.max_items_per_page, len(results)) for results in self.results.values())
     
-    def formated_generator(self, max_items_per_page: int = 10):
-        super().formated_generator()
+    def formatted_generator(self):
+        super().formatted_generator()
         i = 0
         
         for page in self.results:
@@ -70,19 +76,37 @@ class SearchResults(Results):
                 i += 1
                 j += 1
                 
-                if j >= max_items_per_page:
+                if j >= self.max_items_per_page:
                     break
 
 
+class GoToResults(Results):
+    def __init__(self, results: List[DatabaseObject], **kwargs):
+        self.results: List[DatabaseObject] = results
+
+        super().__init__(**kwargs)
+
+    def __getitem__(self, index: int): 
+        return self.results[index]
+
+    def __len__(self) -> int:
+        return len(self.results)
+
+    def formatted_generator(self):
+        yield from (Option(i, o) for i, o in enumerate(self.results))
+    
+
+
 class PageResults(Results):
-    def __init__(self, page: Type[Page], results: List[DatabaseObject]) -> None:
-        super().__init__()
+    def __init__(self, page: Type[Page], results: List[DatabaseObject], **kwargs) -> None:
+        super().__init__(**kwargs)
         
         self.page: Type[Page] = page
         self.results: List[DatabaseObject] = results
+
         
-    def formated_generator(self, max_items_per_page: int = 10):
-        super().formated_generator()
+    def formatted_generator(self, max_items_per_page: int = 10):
+        super().formatted_generator()
         i = 0
         
         yield self.page
@@ -92,3 +116,6 @@ class PageResults(Results):
             self._by_index[i] = option
             self._page_by_index[i] = self.page
             i += 1
+
+    def __len__(self) -> int:
+        return len(self.results)

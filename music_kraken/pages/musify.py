@@ -1,7 +1,7 @@
 from collections import defaultdict
 from dataclasses import dataclass
 from enum import Enum
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Type, Union, Generator, Dict, Any
 from urllib.parse import urlparse
 
 import pycountry
@@ -9,7 +9,7 @@ from bs4 import BeautifulSoup
 
 from ..connection import Connection
 from .abstract import Page
-from ..utils.enums.source import SourcePages
+from ..utils.enums import SourceType, ALL_SOURCE_TYPES
 from ..utils.enums.album import AlbumType, AlbumStatus
 from ..objects import (
     Artist,
@@ -24,8 +24,9 @@ from ..objects import (
     Lyrics,
     Artwork
 )
-from ..utils.config import logging_settings
+from ..utils.config import logging_settings, main_settings
 from ..utils import string_processing, shared
+from ..utils.string_processing import clean_song_title
 from ..utils.support_classes.query import Query
 from ..utils.support_classes.download_result import DownloadResult
 
@@ -110,9 +111,7 @@ def parse_url(url: str) -> MusifyUrl:
 
 
 class Musify(Page):
-    # CHANGE
-    SOURCE_TYPE = SourcePages.MUSIFY
-    LOGGER = logging_settings["musify_logger"]
+    SOURCE_TYPE = ALL_SOURCE_TYPES.MUSIFY
     
     HOST = "https://musify.club"
     
@@ -120,6 +119,7 @@ class Musify(Page):
         self.connection: Connection = Connection(
             host="https://musify.club/",
             logger=self.LOGGER,
+            module="musify",
         )
 
         self.stream_connection: Connection = Connection(
@@ -355,9 +355,11 @@ class Musify(Page):
             if raw_id.isdigit():
                 _id = raw_id
 
+
+
         return Song(
-            title=song_title,
-            main_artist_list=artist_list,
+            title=clean_song_title(song_title, artist_name=artist_list[0].name if len(artist_list) > 0 else None),
+            feature_artist_list=artist_list,
             source_list=source_list
         )
 
@@ -372,7 +374,7 @@ class Musify(Page):
     def general_search(self, search_query: str) -> List[DatabaseObject]:
         search_results = []
 
-        r = self.connection.get(f"https://musify.club/search?searchText={search_query}")
+        r = self.connection.get(f"https://musify.club/search?searchText={search_query}", name="search_" + search_query)
         if r is None:
             return []
         search_soup: BeautifulSoup = self.get_soup_from_response(r)
@@ -390,10 +392,11 @@ class Musify(Page):
         return search_results
     
     def fetch_song(self, source: Source, stop_at_level: int = 1) -> Song:
-        # https://musify.club/track/linkin-park-numb-210765
-        r = self.connection.get(source.url)
+        musify_url = parse_url(source.url)
+
+        r = self.connection.get(source.url, name="track_" + musify_url.name_with_id)
         if r is None:
-            return Song
+            return Song()
         
         soup = self.get_soup_from_response(r)
         
@@ -413,6 +416,10 @@ class Musify(Page):
             
             href = artist_soup["href"]
             if href is not None:
+                href_parts = href.split("/")
+                if len(href_parts) <= 1 or href_parts[-2] != "artist":
+                    return
+
                 artist_src_list.append(Source(self.SOURCE_TYPE, self.HOST + href))
 
             name_elem: BeautifulSoup = artist_soup.find("span", {"itemprop": "name"})
@@ -495,17 +502,26 @@ class Musify(Page):
         for video_container in video_container_list:
             iframe_list: List[BeautifulSoup] = video_container.findAll("iframe")
             for iframe in iframe_list:
+                """
+                the url could look like this
+                https://www.youtube.com/embed/sNObCkhzOYA?si=dNVgnZMBNVlNb0P_
+                """
+                parsed_url = urlparse(iframe["src"])
+                path_parts = parsed_url.path.strip("/").split("/")
+                if path_parts[0] != "embed" or len(path_parts) < 2:
+                    continue
+                
                 source_list.append(Source(
-                    SourcePages.YOUTUBE,
-                    iframe["src"],
-                    referer_page=self.SOURCE_TYPE
+                    ALL_SOURCE_TYPES.YOUTUBE,
+                    f"https://music.youtube.com/watch?v={path_parts[1]}",
+                    referrer_page=self.SOURCE_TYPE
                 ))
         
         return Song(
-            title=track_name,
+            title=clean_song_title(track_name, artist_name=artist_list[0].name if len(artist_list) > 0 else None),
             source_list=source_list,
             lyrics_list=lyrics_list,
-            main_artist_list=artist_list,
+            feature_artist_list=artist_list,
             album_list=album_list,
             artwork=artwork,
         )
@@ -645,10 +661,104 @@ class Musify(Page):
                     ))
 
         return Song(
-            title=song_name,
+            title=clean_song_title(song_name, artist_name=artist_list[0].name if len(artist_list) > 0 else None),
             tracksort=tracksort,
-            main_artist_list=artist_list,
+            feature_artist_list=artist_list,
             source_list=source_list
+        )
+
+    
+    def _parse_album(self, soup: BeautifulSoup) -> Album:
+        name: str = None
+        source_list: List[Source] = []
+        artist_list: List[Artist] = []
+        date: ID3Timestamp = None
+
+        """
+        if breadcrumb list has 4 elements, then
+        the -2 is the artist link,
+        the -1 is the album
+        """
+        # breadcrumb
+        breadcrumb_soup: BeautifulSoup = soup.find("ol", {"class", "breadcrumb"})
+        breadcrumb_elements: List[BeautifulSoup] = breadcrumb_soup.find_all("li", {"class": "breadcrumb-item"})
+        if len(breadcrumb_elements) == 4:
+            # album
+            album_crumb: BeautifulSoup = breadcrumb_elements[-1]
+            name = album_crumb.text.strip()
+
+            # artist
+            artist_crumb: BeautifulSoup = breadcrumb_elements[-2]
+            anchor: BeautifulSoup = artist_crumb.find("a")
+            if anchor is not None:
+                href = anchor.get("href")
+
+                href_parts = href.split("/")
+                if not(len(href_parts) <= 1 or href_parts[-2] != "artist"):
+                    artist_source_list: List[Source] = []
+
+                    if href is not None:
+                        artist_source_list.append(Source(self.SOURCE_TYPE, self.HOST + href.strip()))
+
+                    span: BeautifulSoup = anchor.find("span")
+                    if span is not None:
+                        artist_list.append(Artist(
+                            name=span.get_text(strip=True),
+                            source_list=artist_source_list
+                        ))
+        else:
+            self.LOGGER.debug("there are not 4 breadcrumb items, which shouldn't be the case")
+
+        # meta
+        meta_url: BeautifulSoup = soup.find("meta", {"itemprop": "url"})
+        if meta_url is not None:
+            url = meta_url.get("content")
+            if url is not None:
+                source_list.append(Source(self.SOURCE_TYPE, self.HOST + url))
+
+        meta_name: BeautifulSoup = soup.find("meta", {"itemprop": "name"})
+        if meta_name is not None:
+            _name = meta_name.get("content")
+            if _name is not None:
+                name = _name
+                
+        # album info
+        album_info_ul: BeautifulSoup = soup.find("ul", {"class": "album-info"})
+        if album_info_ul is not None:
+            artist_anchor: BeautifulSoup
+            for artist_anchor in album_info_ul.find_all("a", {"itemprop": "byArtist"}):
+                # line 98
+                artist_source_list: List[Source] = []
+
+                artist_url_meta = artist_anchor.find("meta", {"itemprop": "url"})
+                if artist_url_meta is not None:
+                    artist_href = artist_url_meta.get("content")
+                    if artist_href is not None:
+                        artist_source_list.append(Source(self.SOURCE_TYPE, url=self.HOST + artist_href))
+
+                artist_meta_name = artist_anchor.find("meta", {"itemprop": "name"})
+                if artist_meta_name is not None:
+                    artist_name = artist_meta_name.get("content")
+                    if artist_name is not None:
+                        artist_list.append(Artist(
+                            name=artist_name,
+                            source_list=artist_source_list
+                        ))
+
+            time_soup: BeautifulSoup = album_info_ul.find("time", {"itemprop": "datePublished"})
+            if time_soup is not None:
+                raw_datetime = time_soup.get("datetime")
+                if raw_datetime is not None:
+                    try:
+                        date = ID3Timestamp.strptime(raw_datetime, "%Y-%m-%d")
+                    except ValueError:
+                        self.LOGGER.debug(f"Raw datetime doesn't match time format %Y-%m-%d: {raw_datetime}")
+
+        return Album(
+            title=name,
+            source_list=source_list,
+            artist_list=artist_list,
+            date=date
         )
 
     def fetch_album(self, source: Source, stop_at_level: int = 1) -> Album:
@@ -669,7 +779,7 @@ class Musify(Page):
         url = parse_url(source.url)
 
         endpoint = self.HOST + "/release/" + url.name_with_id
-        r = self.connection.get(endpoint)
+        r = self.connection.get(endpoint, name=url.name_with_id)
         if r is None:
             return Album()
 
@@ -685,30 +795,18 @@ class Musify(Page):
                 new_song = self._parse_song_card(card_soup)
                 album.song_collection.append(new_song)
         
-        if stop_at_level > 1:
-            song: Song
-            for song in album.song_collection:
-                sources = song.source_collection.get_sources_from_page(self.SOURCE_TYPE)
-                for source in sources:
-                    song.merge(self.fetch_song(source=source))
-        
         album.update_tracksort()
 
         return album
     
-    def _get_artist_attributes(self, url: MusifyUrl) -> Artist:
+    def _fetch_initial_artist(self, url: MusifyUrl, source: Source, **kwargs) -> Artist:
         """
-        fetches the main Artist attributes from this endpoint
         https://musify.club/artist/ghost-bath-280348?_pjax=#bodyContent
-        it needs to parse html
-
-        :param url:
-        :return:
         """
 
-        r = self.connection.get(f"https://musify.club/{url.source_type.value}/{url.name_with_id}?_pjax=#bodyContent")
+        r = self.connection.get(f"https://musify.club/{url.source_type.value}/{url.name_with_id}?_pjax=#bodyContent", name="artist_attributes_" + url.name_with_id)
         if r is None:
-            return Artist()
+            return Artist(source_list=[source])
 
         soup = self.get_soup_from_response(r)
 
@@ -807,7 +905,7 @@ class Musify(Page):
                 href = additional_source.get("href")
                 if href is None:
                     continue
-                new_src = Source.match_url(href, referer_page=self.SOURCE_TYPE)
+                new_src = Source.match_url(href, referrer_page=self.SOURCE_TYPE)
                 if new_src is None:
                     continue
                 source_list.append(new_src)
@@ -823,7 +921,7 @@ class Musify(Page):
             notes=notes
         )
 
-    def _parse_album_card(self, album_card: BeautifulSoup, artist_name: str = None) -> Album:
+    def _parse_album_card(self, album_card: BeautifulSoup, artist_name: str = None, **kwargs) -> Album:
         """
         <div class="card release-thumbnail" data-type="2">
             <a href="/release/ghost-bath-self-loather-2021-1554266">
@@ -847,46 +945,20 @@ class Musify(Page):
         </div>
         """
 
-        _id: Optional[str] = None
-        name: str = None
-        source_list: List[Source] = []
-        timestamp: Optional[ID3Timestamp] = None
-        album_status = None
-
-        def set_name(new_name: str):
-            nonlocal name
-            nonlocal artist_name
-            
-            # example of just setting not working:
-            # https://musify.club/release/unjoy-eurythmie-psychonaut-4-tired-numb-still-alive-2012-324067
-            if new_name.count(" - ") != 1:
-                name = new_name
-                return
-            
-            potential_artist_list, potential_name = new_name.split(" - ")
-            unified_artist_list = string_processing.unify(potential_artist_list)
-            if artist_name is not None:
-                if string_processing.unify(artist_name) not in unified_artist_list:
-                    name = new_name
-                    return
-                
-                name = potential_name
-                return
-            
-            name = new_name
+        album_kwargs: Dict[str, Any] = {
+            "source_list": [],
+        }
 
         album_status_id = album_card.get("data-type")
         if album_status_id.isdigit():
             album_status_id = int(album_status_id)
-        album_type = ALBUM_TYPE_MAP[album_status_id]
+        album_kwargs["album_type"] = ALBUM_TYPE_MAP[album_status_id]
 
         if album_status_id == 5:
-            album_status = AlbumStatus.BOOTLEG
+            album_kwargs["album_status"] = AlbumStatus.BOOTLEG
 
         def parse_release_anchor(_anchor: BeautifulSoup, text_is_name=False):
-            nonlocal _id
-            nonlocal name
-            nonlocal source_list
+            nonlocal album_kwargs
 
             if _anchor is None:
                 return
@@ -894,20 +966,13 @@ class Musify(Page):
             href = _anchor.get("href")
             if href is not None:
                 # add url to sources
-                source_list.append(Source(
+                album_kwargs["source_list"].append(Source(
                     self.SOURCE_TYPE,
                     self.HOST + href
                 ))
 
-                # split id from url
-                split_href = href.split("-")
-                if len(split_href) > 1:
-                    _id = split_href[-1]
-
-            if not text_is_name:
-                return
-
-            set_name(_anchor.text)
+            if text_is_name:
+                album_kwargs["title"] = clean_song_title(_anchor.text, artist_name)
 
         anchor_list = album_card.find_all("a", recursive=False)
         if len(anchor_list) > 0:
@@ -918,7 +983,7 @@ class Musify(Page):
             if thumbnail is not None:
                 alt = thumbnail.get("alt")
                 if alt is not None:
-                    set_name(alt)
+                    album_kwargs["title"] = clean_song_title(alt, artist_name)
 
                 image_url = thumbnail.get("src")
         else:
@@ -935,7 +1000,7 @@ class Musify(Page):
                 13.11.2021
             </small>
             """
-            nonlocal timestamp
+            nonlocal album_kwargs
 
             italic_tagging_soup: BeautifulSoup = small_soup.find("i")
             if italic_tagging_soup is None:
@@ -945,7 +1010,7 @@ class Musify(Page):
                 return
 
             raw_time = small_soup.text.strip()
-            timestamp = ID3Timestamp.strptime(raw_time, "%d.%m.%Y")
+            album_kwargs["date"] = ID3Timestamp.strptime(raw_time, "%d.%m.%Y")
 
         # parse small date
         card_footer_list = album_card.find_all("div", {"class": "card-footer"})
@@ -958,112 +1023,18 @@ class Musify(Page):
         else:
             self.LOGGER.debug("there is not even 1 footer in the album card")
 
-        return Album(
-            title=name,
-            source_list=source_list,
-            date=timestamp,
-            album_type=album_type,
-            album_status=album_status
-        )
+        return Album(**album_kwargs)
 
-    def _parse_album(self, soup: BeautifulSoup) -> Album:
-        name: str = None
-        source_list: List[Source] = []
-        artist_list: List[Artist] = []
-        date: ID3Timestamp = None
-
-        """
-        if breadcrumb list has 4 elements, then
-        the -2 is the artist link,
-        the -1 is the album
-        """
-        # breadcrumb
-        breadcrumb_soup: BeautifulSoup = soup.find("ol", {"class", "breadcrumb"})
-        breadcrumb_elements: List[BeautifulSoup] = breadcrumb_soup.find_all("li", {"class": "breadcrumb-item"})
-        if len(breadcrumb_elements) == 4:
-            # album
-            album_crumb: BeautifulSoup = breadcrumb_elements[-1]
-            name = album_crumb.text.strip()
-
-            # artist
-            artist_crumb: BeautifulSoup = breadcrumb_elements[-2]
-            anchor: BeautifulSoup = artist_crumb.find("a")
-            if anchor is not None:
-                href = anchor.get("href")
-                artist_source_list: List[Source] = []
-
-                if href is not None:
-                    artist_source_list.append(Source(self.SOURCE_TYPE, self.HOST + href.strip()))
-
-                span: BeautifulSoup = anchor.find("span")
-                if span is not None:
-                    artist_list.append(Artist(
-                        name=span.get_text(strip=True),
-                        source_list=artist_source_list
-                    ))
-        else:
-            self.LOGGER.debug("there are not 4 breadcrumb items, which shouldn't be the case")
-
-        # meta
-        meta_url: BeautifulSoup = soup.find("meta", {"itemprop": "url"})
-        if meta_url is not None:
-            url = meta_url.get("content")
-            if url is not None:
-                source_list.append(Source(self.SOURCE_TYPE, self.HOST + url))
-
-        meta_name: BeautifulSoup = soup.find("meta", {"itemprop": "name"})
-        if meta_name is not None:
-            _name = meta_name.get("content")
-            if _name is not None:
-                name = _name
-                
-        # album info
-        album_info_ul: BeautifulSoup = soup.find("ul", {"class": "album-info"})
-        if album_info_ul is not None:
-            artist_anchor: BeautifulSoup
-            for artist_anchor in album_info_ul.find_all("a", {"itemprop": "byArtist"}):
-                # line 98
-                artist_source_list: List[Source] = []
-
-                artist_url_meta = artist_anchor.find("meta", {"itemprop": "url"})
-                if artist_url_meta is not None:
-                    artist_href = artist_url_meta.get("content")
-                    if artist_href is not None:
-                        artist_source_list.append(Source(self.SOURCE_TYPE, url=self.HOST + artist_href))
-
-                artist_meta_name = artist_anchor.find("meta", {"itemprop": "name"})
-                if artist_meta_name is not None:
-                    artist_name = artist_meta_name.get("content")
-                    if artist_name is not None:
-                        artist_list.append(Artist(
-                            name=artist_name,
-                            source_list=artist_source_list
-                        ))
-
-            time_soup: BeautifulSoup = album_info_ul.find("time", {"itemprop": "datePublished"})
-            if time_soup is not None:
-                raw_datetime = time_soup.get("datetime")
-                if raw_datetime is not None:
-                    try:
-                        date = ID3Timestamp.strptime(raw_datetime, "%Y-%m-%d")
-                    except ValueError:
-                        self.LOGGER.debug(f"Raw datetime doesn't match time format %Y-%m-%d: {raw_datetime}")
-
-        return Album(
-            title=name,
-            source_list=source_list,
-            artist_list=artist_list,
-            date=date
-        )
-
-    def _get_discography(self, url: MusifyUrl, artist_name: str = None, stop_at_level: int = 1) -> List[Album]:
+    def _fetch_artist_discography(self, artist: Artist, url: MusifyUrl, artist_name: str = None, **kwargs):
         """
         POST https://musify.club/artist/filteralbums
-        ArtistID: 280348
-        SortOrder.Property: dateCreated
-        SortOrder.IsAscending: false
-        X-Requested-With: XMLHttpRequest
+            ArtistID: 280348
+            SortOrder.Property: dateCreated
+            SortOrder.IsAscending: false
+            X-Requested-With: XMLHttpRequest
         """
+        _download_all = kwargs.get("download_all", False)
+        _album_type_blacklist = kwargs.get("album_type_blacklist", main_settings["album_type_blacklist"])
 
         endpoint = self.HOST + "/" + url.source_type.value + "/filteralbums"
 
@@ -1072,46 +1043,31 @@ class Musify(Page):
             "SortOrder.Property": "dateCreated",
             "SortOrder.IsAscending": False,
             "X-Requested-With": "XMLHttpRequest"
-        })
+        }, name="discography_" + url.name_with_id)
         if r is None:
-            return []
-        soup: BeautifulSoup = BeautifulSoup(r.content, features="html.parser")
+            return
 
-        discography: List[Album] = []
+        soup: BeautifulSoup = self.get_soup_from_response(r)
+
         for card_soup in soup.find_all("div", {"class": "card"}):
-            new_album: Album = self._parse_album_card(card_soup, artist_name)
-            album_source: Source
-            
-            if stop_at_level > 1:
-                for album_source in new_album.source_collection.get_sources_from_page(self.SOURCE_TYPE):
-                    new_album.merge(self.fetch_album(album_source, stop_at_level=stop_at_level-1))
-            
-            discography.append(new_album)
+            album = self._parse_album_card(card_soup, artist_name, **kwargs)
+            if not self.fetch_options.download_all and album.album_type in self.fetch_options.album_type_blacklist:
+                continue
 
-        return discography
+            artist.album_collection.append(album)
 
-    def fetch_artist(self, source: Source, stop_at_level: int = 1) -> Artist:
+    def fetch_artist(self, source: Source, **kwargs) -> Artist:
         """
-        fetches artist from source
-
+        TODO
         [x] discography
         [x] attributes
         [] picture gallery
-
-        Args:
-            source (Source): the source to fetch
-            stop_at_level: int = 1: if it is false, every album from discograohy will be fetched. Defaults to False.
-
-        Returns:
-            Artist: the artist fetched
         """
 
         url = parse_url(source.url)
 
-        artist = self._get_artist_attributes(url)
-
-        discography: List[Album] = self._get_discography(url, artist.name)
-        artist.main_album_collection.extend(discography)
+        artist = self._fetch_initial_artist(url, source=source, **kwargs)
+        self._fetch_artist_discography(artist, url, artist.name, **kwargs)
         
         return artist
 
@@ -1134,4 +1090,4 @@ class Musify(Page):
 
             self.LOGGER.warning(f"The source has no audio link. Falling back to {endpoint}.")
 
-        return self.stream_connection.stream_into(endpoint, target, raw_url=True, exclude_headers=["Host"])
+        return self.stream_connection.stream_into(endpoint, target, raw_url=True, exclude_headers=["Host"], name=desc)

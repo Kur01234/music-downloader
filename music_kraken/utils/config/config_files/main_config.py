@@ -19,7 +19,7 @@ config = Config((
 You can use Audio formats which support ID3.2 and ID3.1,
 but you will have cleaner Metadata using ID3.2."""),
 
-    Attribute(name="result_history", default_value=False, description="""If enabled, you can go back to the previous results.
+    Attribute(name="result_history", default_value=True, description="""If enabled, you can go back to the previous results.
 The consequence is a higher meory consumption, because every result is saved."""),
     Attribute(name="history_length", default_value=8, description="""You can choose how far back you can go in the result history.
 The further you choose to be able to go back, the higher the memory usage.

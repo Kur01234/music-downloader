@@ -9,8 +9,6 @@ from rich.console import Console
 from .utils.shared import DEBUG, DEBUG_LOGGING
 from .utils.config import logging_settings, main_settings, read_config
 
-__version__ = "1.15.0"
-
 read_config()
 
 console: Console = Console()
@@ -46,7 +44,7 @@ init_logging()
 from . import cli
 
 if DEBUG:
-    sys.setrecursionlimit(100)
+    sys.setrecursionlimit(300)
 
 
 if main_settings['modify_gc']:

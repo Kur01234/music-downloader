@@ -8,33 +8,41 @@ import json
 from dataclasses import dataclass
 import re
 from functools import lru_cache
+from collections import defaultdict
 
 import youtube_dl
 from youtube_dl.extractor.youtube import YoutubeIE
+from youtube_dl.utils import DownloadError
 
 from ...utils.exception.config import SettingValueError
 from ...utils.config import main_settings, youtube_settings, logging_settings
 from ...utils.shared import DEBUG, DEBUG_YOUTUBE_INITIALIZING
 from ...utils.string_processing import clean_song_title
-from ...utils import get_current_millis
+from ...utils import get_current_millis, traverse_json_path
 
 from ...utils import dump_to_file
 
-from ...objects import Source, DatabaseObject, ID3Timestamp, Artwork
 from ..abstract import Page
 from ...objects import (
-    Artist,
+    DatabaseObject as DataObject,
     Source,
-    SourcePages,
+    FormattedText,
+    ID3Timestamp,
+    Artwork,
+    Artist,
     Song,
     Album,
     Label,
-    Target
+    Target,
+    Lyrics,
 )
 from ...connection import Connection
+from ...utils.enums import SourceType, ALL_SOURCE_TYPES
+from ...utils.enums.album import AlbumType
 from ...utils.support_classes.download_result import DownloadResult
 
 from ._list_render import parse_renderer
+from ._music_object_render import parse_run_element
 from .super_youtube import SuperYouTube
 
 
@@ -161,16 +169,21 @@ class MusicKrakenYoutubeIE(YoutubeIE):
 
 
 
+ALBUM_TYPE_MAP = {
+    "Single": AlbumType.SINGLE,
+    "Album": AlbumType.STUDIO_ALBUM,
+    "EP": AlbumType.EP,
+}
+
 
 class YoutubeMusic(SuperYouTube):
     # CHANGE
-    SOURCE_TYPE = SourcePages.YOUTUBE_MUSIC
-    LOGGER = logging_settings["youtube_music_logger"]
+    SOURCE_TYPE = ALL_SOURCE_TYPES.YOUTUBE
 
     def __init__(self, *args, ydl_opts: dict = None, **kwargs):
         self.yt_music_connection: YoutubeMusicConnection = YoutubeMusicConnection(
             logger=self.LOGGER,
-            accept_language="en-US,en;q=0.5"
+            accept_language="en-US,en;q=0.5",
         )
         self.credentials: YouTubeMusicCredentials = YouTubeMusicCredentials(
             api_key=youtube_settings["youtube_music_api_key"],
@@ -181,8 +194,7 @@ class YoutubeMusic(SuperYouTube):
 
         self.start_millis = get_current_millis()
 
-        if self.credentials.api_key == "" or DEBUG_YOUTUBE_INITIALIZING:
-            self._fetch_from_main_page()
+        self._fetch_from_main_page()
 
         SuperYouTube.__init__(self, *args, **kwargs)
 
@@ -201,6 +213,9 @@ class YoutubeMusic(SuperYouTube):
         self.yt_ie = MusicKrakenYoutubeIE(downloader=self.ydl, main_instance=self)
 
         self.download_values_by_url: dict = {}
+        self.not_download: Dict[str, DownloadError] = {}
+
+        super().__init__(*args, **kwargs)
 
     def _fetch_from_main_page(self):
         """
@@ -210,7 +225,7 @@ class YoutubeMusic(SuperYouTube):
         search for: "innertubeApiKey"
         """
 
-        r = self.yt_music_connection.get("https://music.youtube.com/")
+        r = self.yt_music_connection.get("https://music.youtube.com/", name="youtube_music_index.html", disable_cache=True, enable_cache_readonly=True)
         if r is None:
             return
 
@@ -230,7 +245,7 @@ class YoutubeMusic(SuperYouTube):
                 'set_ytc': 'true',
                 'set_apyt': 'true',
                 'set_eom': 'false'
-            })
+            }, disable_cache=True)
             if r is None:
                 return
 
@@ -245,9 +260,9 @@ class YoutubeMusic(SuperYouTube):
             # save cookies in settings
             youtube_settings["youtube_music_consent_cookies"] = cookie_dict
         else:
-            self.yt_music_connection.save(r, "index.html")
+            self.yt_music_connection.save(r, "youtube_music_index.html", no_update_if_valid_exists=True)
 
-        r = self.yt_music_connection.get("https://music.youtube.com/", name="index.html")
+        r = self.yt_music_connection.get("https://music.youtube.com/", name="youtube_music_index.html")
         if r is None:
             return
 
@@ -334,10 +349,10 @@ class YoutubeMusic(SuperYouTube):
             default='{}'
         )) or {}
 
-    def get_source_type(self, source: Source) -> Optional[Type[DatabaseObject]]:
+    def get_source_type(self, source: Source) -> Optional[Type[DataObject]]:
         return super().get_source_type(source)
 
-    def general_search(self, search_query: str) -> List[DatabaseObject]:
+    def general_search(self, search_query: str) -> List[DataObject]:
         search_query = search_query.strip()
 
         urlescaped_query: str = quote(search_query.strip().replace(" ", "+"))
@@ -372,7 +387,8 @@ class YoutubeMusic(SuperYouTube):
             },
             headers={
                 "Referer": get_youtube_url(path=f"/search", query=f"q={urlescaped_query}")
-            }
+            },
+            name=f"search_{search_query}.json"
         )
 
         if r is None:
@@ -398,7 +414,7 @@ class YoutubeMusic(SuperYouTube):
         return results
 
     def fetch_artist(self, source: Source, stop_at_level: int = 1) -> Artist:
-        artist = Artist()
+        artist = Artist(source_list=[source])
 
         # construct the request
         url = urlparse(source.url)
@@ -409,7 +425,8 @@ class YoutubeMusic(SuperYouTube):
             json={
                 "browseId": browse_id,
                 "context": {**self.credentials.context, "adSignalsInfo": {"params": []}}
-            }
+            },
+            name=f"fetch_artist_{browse_id}.json"
         )
         if r is None:
             return artist
@@ -417,6 +434,19 @@ class YoutubeMusic(SuperYouTube):
         if DEBUG:
             dump_to_file(f"{browse_id}.json", r.text, is_json=True, exit_after_dump=False)
 
+        # artist details
+        data: dict = r.json()
+        header = data.get("header", {})
+        musicDetailHeaderRenderer = header.get("musicDetailHeaderRenderer", {})
+        
+        title_runs: List[dict] = musicDetailHeaderRenderer.get("title", {}).get("runs", [])
+        subtitle_runs: List[dict] = musicDetailHeaderRenderer.get("subtitle", {}).get("runs", [])
+
+        if len(title_runs) > 0:
+            artist.name = title_runs[0].get("text", artist.name)
+
+
+        # fetch discography
         renderer_list = r.json().get("contents", {}).get("singleColumnBrowseResultsRenderer", {}).get("tabs", [{}])[
             0].get("tabRenderer", {}).get("content", {}).get("sectionListRenderer", {}).get("contents", [])
 
@@ -452,7 +482,8 @@ class YoutubeMusic(SuperYouTube):
             json={
                 "browseId": browse_id,
                 "context": {**self.credentials.context, "adSignalsInfo": {"params": []}}
-            }
+            },
+            name=f"fetch_album_{browse_id}.json"
         )
         if r is None:
             return album
@@ -460,6 +491,46 @@ class YoutubeMusic(SuperYouTube):
         if DEBUG:
             dump_to_file(f"{browse_id}.json", r.text, is_json=True, exit_after_dump=False)
 
+        data = r.json()
+
+        # album details
+        header = data.get("header", {})
+        musicDetailHeaderRenderer = header.get("musicDetailHeaderRenderer", {})
+        
+        title_runs: List[dict] = musicDetailHeaderRenderer.get("title", {}).get("runs", [])
+        subtitle_runs: List[dict] = musicDetailHeaderRenderer.get("subtitle", {}).get("runs", [])
+
+        if len(title_runs) > 0:
+            album.title = title_runs[0].get("text", album.title)
+
+        def other_parse_run(run: dict) -> str:
+            nonlocal album
+
+            if "text" not in run:
+                return
+            text = run["text"]
+
+            is_text_field = len(run.keys()) == 1
+
+            # regex that text is a year
+            if is_text_field and re.match(r"\d{4}", text):
+                album.date = ID3Timestamp.strptime(text, "%Y")
+                return
+
+            if text in ALBUM_TYPE_MAP:
+                album.album_type = ALBUM_TYPE_MAP[text]
+                return
+
+            if not is_text_field:
+                r = parse_run_element(run)
+                if r is not None:
+                    album.add_list_of_other_objects([r])
+                return
+
+        for _run in subtitle_runs:
+            other_parse_run(_run)
+
+        # tracklist
         renderer_list = r.json().get("contents", {}).get("singleColumnBrowseResultsRenderer", {}).get("tabs", [{}])[
             0].get("tabRenderer", {}).get("content", {}).get("sectionListRenderer", {}).get("contents", [])
 
@@ -467,27 +538,100 @@ class YoutubeMusic(SuperYouTube):
             for i, content in enumerate(renderer_list):
                 dump_to_file(f"{i}-album-renderer.json", json.dumps(content), is_json=True, exit_after_dump=False)
 
-        results = []
-
-        """
-        cant use fixed indices, because if something has no entries, the list dissappears
-        instead I have to try parse everything, and just reject community playlists and profiles.
-        """
 
         for renderer in renderer_list:
-            results.extend(parse_renderer(renderer))
+            album.add_list_of_other_objects(parse_renderer(renderer))
 
-        album.add_list_of_other_objects(results)
+        for song in album.song_collection:
+            for song_source in song.source_collection:
+                song_source.additional_data["playlist_id"] = browse_id
 
         return album
 
+    def fetch_lyrics(self, video_id: str, playlist_id: str = None) -> str:
+        """
+        1. fetches the tabs of a song, to get the browse id
+        2. finds the browse id of the lyrics
+        3. fetches the lyrics with the browse id
+        """
+        request_data = {
+            "context": {**self.credentials.context, "adSignalsInfo": {"params": []}},
+            "videoId": video_id,
+        }
+        if playlist_id is not None:
+            request_data["playlistId"] = playlist_id
+        
+        tab_request = self.yt_music_connection.post(
+            url=get_youtube_url(path="/youtubei/v1/next", query=f"prettyPrint=false"),
+            json=request_data,
+            name=f"fetch_song_tabs_{video_id}.json",
+        )
+
+        if tab_request is None:
+            return None
+        
+        dump_to_file(f"fetch_song_tabs_{video_id}.json", tab_request.text, is_json=True, exit_after_dump=False)
+
+        tab_data: dict = tab_request.json()
+
+        tabs = traverse_json_path(tab_data, "contents.singleColumnMusicWatchNextResultsRenderer.tabbedRenderer.watchNextTabbedResultsRenderer.tabs", default=[])
+        browse_id = None
+        for tab in tabs:
+            pageType = traverse_json_path(tab, "tabRenderer.endpoint.browseEndpoint.browseEndpointContextSupportedConfigs.browseEndpointContextMusicConfig.pageType", default="")
+            if pageType in ("MUSIC_TAB_TYPE_LYRICS", "MUSIC_PAGE_TYPE_TRACK_LYRICS") or "lyrics" in pageType.lower():
+                browse_id = traverse_json_path(tab, "tabRenderer.endpoint.browseEndpoint.browseId", default=None)
+                if browse_id is not None:
+                    break
+
+        if browse_id is None:
+            return None
+
+
+        r = self.yt_music_connection.post(
+            url=get_youtube_url(path="/youtubei/v1/browse", query=f"prettyPrint=false"),
+            json={
+                "browseId": browse_id,
+                "context": {**self.credentials.context, "adSignalsInfo": {"params": []}}
+            },
+            name=f"fetch_song_lyrics_{video_id}.json"
+        )
+        if r is None:
+            return None
+
+        dump_to_file(f"fetch_song_lyrics_{video_id}.json", r.text, is_json=True, exit_after_dump=False)
+
+        data = r.json()
+        lyrics_text = traverse_json_path(data, "contents.sectionListRenderer.contents[0].musicDescriptionShelfRenderer.description.runs[0].text", default=None)
+        if lyrics_text is None:
+            return None
+        
+        return Lyrics(FormattedText(plain=lyrics_text))
+
 
     def fetch_song(self, source: Source, stop_at_level: int = 1) -> Song:
-        ydl_res: dict = self.ydl.extract_info(url=source.url, download=False)
+        ydl_res: dict = {}
+        try:
+            ydl_res: dict = self.ydl.extract_info(url=source.url, download=False)
+        except DownloadError as e:
+            self.not_download[source.hash_url] = e
+            self.LOGGER.error(f"Couldn't fetch song from {source.url}. {e}")
+            return Song()
 
         self.fetch_media_url(source=source, ydl_res=ydl_res)
 
-        artist_name = ydl_res.get("artist", ydl_res.get("uploader", "")).rstrip(" - Topic")
+        artist_names = []
+        uploader = ydl_res.get("uploader", "")
+        if uploader.endswith(" - Topic"):
+            artist_names = [uploader.rstrip(" - Topic")]
+
+        artist_list = [
+            Artist(
+                name=name,
+                source_list=[Source(
+                    self.SOURCE_TYPE, 
+                    f"https://music.youtube.com/channel/{ydl_res.get('channel_id', ydl_res.get('uploader_id', ''))}"
+            )]
+        ) for name in artist_names]
 
         album_list = []
         if "album" in ydl_res:
@@ -496,24 +640,56 @@ class YoutubeMusic(SuperYouTube):
                 date=ID3Timestamp.strptime(ydl_res.get("upload_date"), "%Y%m%d"),
             ))
 
-        return Song(
+        artist_name = artist_names[0] if len(artist_names) > 0 else None
+        song = Song(
             title=ydl_res.get("track", clean_song_title(ydl_res.get("title"), artist_name=artist_name)),
             note=ydl_res.get("descriptions"),
             album_list=album_list,
             length=int(ydl_res.get("duration", 0)) * 1000,
             artwork=Artwork(*ydl_res.get("thumbnails", [])),
-            main_artist_list=[Artist(
-                name=artist_name,
-                source_list=[Source(
-                    SourcePages.YOUTUBE_MUSIC, 
-                    f"https://music.youtube.com/channel/{ydl_res.get('channel_id', ydl_res.get('uploader_id', ''))}"
-                )]
-            )],
+            artist_list=artist_list,
             source_list=[Source(
-                SourcePages.YOUTUBE_MUSIC,
+                self.SOURCE_TYPE,
                 f"https://music.youtube.com/watch?v={ydl_res.get('id')}"
             ), source],
         )
+
+        # other song details
+        parsed_url = urlparse(source.url)
+        browse_id = parse_qs(parsed_url.query)['v'][0]
+        request_data = {
+            "captionParams": {},
+            "context": {**self.credentials.context, "adSignalsInfo": {"params": []}},
+            "videoId": browse_id,
+        }
+        if "playlist_id" in source.additional_data:
+            request_data["playlistId"] = source.additional_data["playlist_id"]
+        
+        initial_details = self.yt_music_connection.post(
+            url=get_youtube_url(path="/youtubei/v1/player", query=f"prettyPrint=false"),
+            json=request_data,
+            name=f"fetch_song_{browse_id}.json",
+        )
+
+        if initial_details is None:
+            return song
+
+        dump_to_file(f"fetch_song_{browse_id}.json", initial_details.text, is_json=True, exit_after_dump=False)
+        
+        data = initial_details.json()
+        video_details = data.get("videoDetails", {})
+
+        browse_id = video_details.get("videoId", browse_id)
+        song.title = video_details.get("title", song.title)
+        if video_details.get("isLiveContent", False):
+            for album in song.album_list:
+                album.album_type = AlbumType.LIVE_ALBUM
+        for thumbnail in video_details.get("thumbnails", []):
+            song.artwork.append(**thumbnail)
+
+        song.lyrics_collection.append(self.fetch_lyrics(browse_id, playlist_id=request_data.get("playlistId")))
+
+        return song
 
 
     def fetch_media_url(self, source: Source, ydl_res: dict = None) -> dict:
@@ -541,12 +717,16 @@ class YoutubeMusic(SuperYouTube):
             return self.download_values_by_url[source.url]
 
         if ydl_res is None:
-            ydl_res = self.ydl.extract_info(url=source.url, download=False)
+            try:
+                ydl_res = self.ydl.extract_info(url=source.url, download=False)
+            except DownloadError as e:
+                self.not_download[source.hash_url] = e
+                self.LOGGER.error(f"Couldn't fetch song from {source.url}. {e}")
+                return {"error": e}
         _best_format = _get_best_format(ydl_res.get("formats", [{}]))
 
         self.download_values_by_url[source.url] = {
             "url": _best_format.get("url"),
-            "chunk_size": _best_format.get("downloader_options", {}).get("http_chunk_size", main_settings["chunk_size"]),
             "headers": _best_format.get("http_headers", {}),
         }
 
@@ -556,17 +736,21 @@ class YoutubeMusic(SuperYouTube):
     def download_song_to_target(self, source: Source, target: Target, desc: str = None) -> DownloadResult:
         media = self.fetch_media_url(source)
 
-        result = self.download_connection.stream_into(
-            media["url"], 
-            target, 
-            name=desc, 
-            raw_url=True, 
-            raw_headers=True,
-            disable_cache=True,
-            headers=media.get("headers", {}),
-            # chunk_size=media.get("chunk_size", main_settings["chunk_size"]),
-            method="GET",
-        )
+        if source.hash_url not in self.not_download and "error" not in media:
+            result = self.download_connection.stream_into(
+                media["url"], 
+                target, 
+                name=desc, 
+                raw_url=True, 
+                raw_headers=True,
+                disable_cache=True,
+                headers=media.get("headers", {}),
+                chunk_size=main_settings["chunk_size"],
+                method="GET",
+                timeout=5,
+            )
+        else:
+            result = DownloadResult(error_message=str(media.get("error") or self.not_download[source.hash_url]))
 
         if result.is_fatal_error:
             result.merge(super().download_song_to_target(source=source, target=target, desc=desc))

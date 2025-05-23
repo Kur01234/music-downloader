@@ -60,6 +60,11 @@ Reference for the logging formats: https://docs.python.org/3/library/logging.htm
         default_value="musify"
     ),
     LoggerAttribute(
+        name="musicbrainz_logger",
+        description="The logger for the musicbrainz scraper.",
+        default_value="musicbrainz"
+    ),
+    LoggerAttribute(
         name="youtube_logger",
         description="The logger for the youtube scraper.",
         default_value="youtube"
